@@ -1,0 +1,12 @@
+# CastingNuwa 核心依赖
+openai>=1.0.0          # LLM API 调用（OpenAI 兼容，支持 DeepSeek/智谱/豆包等）
+
+# Web 界面依赖
+gradio>=4.0.0          # Web 界面（运行 app.py 需要）
+
+# 可选依赖（后续阶段需要，当前版本不需要）
+# python-docx>=1.0.0    # 读取 .docx 剧本文件
+# whisper>=1.0.0         # 语音转写（多模态演员画像）
+# opencv-python>=4.8.0   # 计算机视觉（多模态演员画像）
+# mediapipe>=0.10.0      # 面部/肢体识别
+# sentence-transformers>=2.0.0  # 向量嵌入（匹配引擎优化）
