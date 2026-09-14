@@ -169,6 +169,10 @@ class LLMClient:
         用于无 API Key 时演示完整流程。
         根据输出格式的独特字段精确判断请求类型。
         """
+        # 检测是否为制作团队需求分析请求（输出格式包含 production_scale 和 requirements）
+        if "production_scale" in user_prompt and "requirements" in user_prompt:
+            return self._mock_crew_analysis()
+
         # 检测是否为匹配引擎请求（输出格式包含 overall_score 和 dimension_scores）
         if "overall_score" in user_prompt and "dimension_scores" in user_prompt:
             return self._mock_match_result(user_prompt)
@@ -708,3 +712,98 @@ class LLMClient:
         result["role_name"] = role_name
         result["actor_name"] = actor_name
         return json.dumps(result, ensure_ascii=False, indent=2)
+
+    def _mock_crew_analysis(self) -> str:
+        """Mock 制作团队需求分析结果（基于示例短剧风格）"""
+        return json.dumps({
+            "script_title": "回家吧莱恩",
+            "total_scenes": 3,
+            "total_characters": 4,
+            "production_scale": "小型",
+            "overall_summary": "本剧为三场景小剧场话剧，制作规模较小。核心挑战在于第三幕雨夜场景的灯光与音效配合，以及莱恩情绪爆发时的灯光变化。建议配置1名灯光师和1名音效师，舞美和道具可由演员兼任。",
+            "requirements": {
+                "lighting": {
+                    "role_key": "lighting",
+                    "role_name": "灯光师",
+                    "needed": True,
+                    "headcount": 1,
+                    "complexity": 6,
+                    "skill_requirements": ["基础灯光控制台操作", "情绪场景灯光设计", "追光使用"],
+                    "evidence": [
+                        "第三幕：雨夜，窗外闪电不时照亮房间",
+                        "莱恩情绪爆发时：灯光骤然变冷",
+                        "结尾：暖光渐暗，象征和解"
+                    ],
+                    "special_needs": "需要配合音效实现闪电效果的同步",
+                    "notes": "小剧场可使用基础灯光设备，重点在情绪变化的灯光过渡"
+                },
+                "sound": {
+                    "role_key": "sound",
+                    "role_name": "音效师",
+                    "needed": True,
+                    "headcount": 1,
+                    "complexity": 5,
+                    "skill_requirements": ["音效播放与混音", "环境音设计", "现场音效同步"],
+                    "evidence": [
+                        "第三幕：雨声持续",
+                        "雷声由远及近",
+                        "电话铃声打断对话"
+                    ],
+                    "special_needs": "雨声需持续播放并根据剧情调整音量",
+                    "notes": "可使用预录音效，重点在与灯光的同步配合"
+                },
+                "stage_design": {
+                    "role_key": "stage_design",
+                    "role_name": "舞美设计",
+                    "needed": True,
+                    "headcount": 1,
+                    "complexity": 3,
+                    "skill_requirements": ["简约场景设计", "快速换景", "道具整合"],
+                    "evidence": [
+                        "第一幕：戏剧社排练室",
+                        "第二幕：校园走廊",
+                        "第三幕：莱恩的房间"
+                    ],
+                    "special_needs": "三个场景需快速切换，建议使用可移动布景",
+                    "notes": "小剧场可采用简约风格，重点道具突出即可"
+                },
+                "costume": {
+                    "role_key": "costume",
+                    "role_name": "服装师",
+                    "needed": False,
+                    "headcount": 0,
+                    "complexity": 2,
+                    "skill_requirements": [],
+                    "evidence": ["现代校园剧，角色穿着日常服装"],
+                    "special_needs": "",
+                    "notes": "现代剧可由演员自备服装，无需专门服装师"
+                },
+                "props": {
+                    "role_key": "props",
+                    "role_name": "道具师",
+                    "needed": True,
+                    "headcount": 1,
+                    "complexity": 4,
+                    "skill_requirements": ["道具准备与管理", "手持道具使用指导"],
+                    "evidence": [
+                        "莱恩手中的剧本",
+                        "小雨的手机",
+                        "第三幕的电话（关键道具）",
+                        "排练室的椅子"
+                    ],
+                    "special_needs": "电话需能真实响铃",
+                    "notes": "可由舞台监督兼任，重点在道具的上场下场管理"
+                },
+                "makeup": {
+                    "role_key": "makeup",
+                    "role_name": "化妆师",
+                    "needed": False,
+                    "headcount": 0,
+                    "complexity": 1,
+                    "skill_requirements": [],
+                    "evidence": ["现代校园剧，无特殊化妆需求"],
+                    "special_needs": "",
+                    "notes": "现代剧无需专门化妆师，演员可自行整理"
+                }
+            }
+        }, ensure_ascii=False, indent=2)

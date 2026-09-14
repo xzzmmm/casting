@@ -360,3 +360,159 @@ class RoleCard:
         lines.append(f"")
         lines.append(f"{'='*60}")
         return "\n".join(lines)
+
+
+# ============================================================
+# 制作团队需求分析（Crew Requirement Analysis）
+# ============================================================
+
+# 后台岗位定义
+CREW_ROLES = {
+    "lighting": {
+        "name": "灯光师",
+        "description": "负责舞台灯光设计与执行，分析剧本中的灯光提示、场景切换、特殊光效需求",
+        "analysis_focus": "灯光提示词、场景明暗变化、追光/聚光/频闪/色彩等特殊效果",
+    },
+    "sound": {
+        "name": "音效师",
+        "description": "负责音效设计与现场播放，分析剧本中的音效提示、背景音乐需求",
+        "analysis_focus": "音效提示（雷声/敲门声/音乐等）、背景音乐、现场播放复杂度",
+    },
+    "stage_design": {
+        "name": "舞美设计",
+        "description": "负责舞台美术设计与场景搭建，分析剧本中的场景描述、换景需求",
+        "analysis_focus": "场景数量、场景描述复杂度、换景次数与难度、特殊舞台装置",
+    },
+    "costume": {
+        "name": "服装师",
+        "description": "负责角色服装设计与管理，分析剧本中的服装描述、换装需求",
+        "analysis_focus": "角色服装描述、换装次数、特殊服装（古装/礼服/特效服装）",
+    },
+    "props": {
+        "name": "道具师",
+        "description": "负责道具准备与管理，分析剧本中的道具需求",
+        "analysis_focus": "手持道具、场景道具、易损/贵重道具、特殊道具",
+    },
+    "makeup": {
+        "name": "化妆师",
+        "description": "负责角色化妆设计，分析剧本中的特殊化妆需求",
+        "analysis_focus": "特殊化妆（伤痕/老年/特效/种族）、妆面变化次数",
+    },
+}
+
+
+@dataclass
+class CrewRequirement:
+    """单个后台岗位的需求分析"""
+    role_key: str = ""               # 岗位键（lighting/sound/stage_design等）
+    role_name: str = ""              # 岗位名称
+    needed: bool = False             # 是否需要该岗位
+    headcount: int = 0               # 建议人数
+    complexity: int = 0              # 复杂度评分 0-10
+    skill_requirements: List[str] = field(default_factory=list)  # 技能要求
+    evidence: List[str] = field(default_factory=list)  # 剧本依据（引用的舞台指示/场景描述）
+    special_needs: str = ""          # 特殊需求说明
+    notes: str = ""                   # 备注
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CrewRequirement":
+        if not isinstance(data, dict):
+            return cls()
+        return cls(
+            role_key=data.get("role_key", ""),
+            role_name=data.get("role_name", ""),
+            needed=data.get("needed", False),
+            headcount=data.get("headcount", 0) or 0,
+            complexity=data.get("complexity", 0) or 0,
+            skill_requirements=data.get("skill_requirements", []) if isinstance(data.get("skill_requirements"), list) else [],
+            evidence=data.get("evidence", []) if isinstance(data.get("evidence"), list) else [],
+            special_needs=data.get("special_needs", ""),
+            notes=data.get("notes", ""),
+        )
+
+
+@dataclass
+class CrewAnalysisResult:
+    """制作团队需求分析结果"""
+    script_title: str = ""           # 剧本标题（如可识别）
+    total_scenes: int = 0            # 场景总数
+    total_characters: int = 0        # 角色总数
+    requirements: Dict[str, CrewRequirement] = field(default_factory=dict)  # 各岗位需求
+    overall_summary: str = ""         # 总体建议
+    production_scale: str = ""        # 制作规模评估（小型/中型/大型）
+
+    def to_dict(self) -> dict:
+        return {
+            "script_title": self.script_title,
+            "total_scenes": self.total_scenes,
+            "total_characters": self.total_characters,
+            "requirements": {k: v.to_dict() for k, v in self.requirements.items()},
+            "overall_summary": self.overall_summary,
+            "production_scale": self.production_scale,
+        }
+
+    def to_json(self, indent: int = 2, ensure_ascii: bool = False) -> str:
+        return json.dumps(self.to_dict(), indent=indent, ensure_ascii=ensure_ascii)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CrewAnalysisResult":
+        if not isinstance(data, dict):
+            return cls()
+        reqs = data.get("requirements", {})
+        return cls(
+            script_title=data.get("script_title", ""),
+            total_scenes=data.get("total_scenes", 0) or 0,
+            total_characters=data.get("total_characters", 0) or 0,
+            requirements={
+                k: CrewRequirement.from_dict(v)
+                for k, v in reqs.items()
+                if isinstance(v, dict)
+            },
+            overall_summary=data.get("overall_summary", ""),
+            production_scale=data.get("production_scale", ""),
+        )
+
+    def summary(self) -> str:
+        """生成人类可读的制作团队需求摘要"""
+        lines = [
+            f"{'='*60}",
+            f"  制作团队需求分析",
+            f"{'='*60}",
+            f"",
+            f"【剧本概要】",
+            f"  标题：{self.script_title or '未识别'}",
+            f"  场景数：{self.total_scenes} | 角色数：{self.total_characters}",
+            f"  制作规模：{self.production_scale or '未评估'}",
+            f"",
+            f"【岗位需求】",
+        ]
+        for key, req in self.requirements.items():
+            status = "需要" if req.needed else "不需要"
+            lines.append(f"")
+            lines.append(f"  ▸ {req.role_name}（{status}）")
+            if req.needed:
+                lines.append(f"    建议人数：{req.headcount}人 | 复杂度：{req.complexity}/10")
+                if req.skill_requirements:
+                    lines.append(f"    技能要求：{', '.join(req.skill_requirements)}")
+                if req.special_needs:
+                    lines.append(f"    特殊需求：{req.special_needs}")
+                if req.evidence:
+                    lines.append(f"    剧本依据：")
+                    for ev in req.evidence[:3]:
+                        lines.append(f"      - {ev}")
+                    if len(req.evidence) > 3:
+                        lines.append(f"      ... 等共{len(req.evidence)}条")
+                if req.notes:
+                    lines.append(f"    备注：{req.notes}")
+
+        lines.extend([
+            f"",
+            f"【总体建议】",
+            f"  {self.overall_summary or '无'}",
+            f"",
+            f"{'='*60}",
+        ])
+        return "\n".join(lines)

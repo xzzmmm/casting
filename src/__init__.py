@@ -6,7 +6,7 @@ CastingNuwa · 选角女娲
 本项目迁移理念：蒸馏戏剧角色的认知操作系统，生成角色卡，辅助选角决策
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "CastingNuwa Team"
 
 from .models import RoleCard
@@ -18,6 +18,8 @@ from .matching_engine import MatchingEngine, CastingReport, MatchResult
 from .audio_processor import AudioProcessor, AudioAnalysisResult, AcousticFeatures
 from .vision_processor import VisionProcessor, VisionAnalysisResult, FacialExpressionFeatures, BodyLanguageFeatures
 from .multimodal_analyzer import MultimodalAnalyzer, MultimodalAnalysisResult
+from .crew_analyzer import CrewAnalyzer
+from .models import CrewAnalysisResult, CrewRequirement
 
 __all__ = [
     "RoleCard", "RoleDistiller", "LLMClient",
@@ -26,4 +28,5 @@ __all__ = [
     "AudioProcessor", "AudioAnalysisResult", "AcousticFeatures",
     "VisionProcessor", "VisionAnalysisResult", "FacialExpressionFeatures", "BodyLanguageFeatures",
     "MultimodalAnalyzer", "MultimodalAnalysisResult",
+    "CrewAnalyzer", "CrewAnalysisResult", "CrewRequirement",
 ]

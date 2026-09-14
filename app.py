@@ -25,8 +25,9 @@ from src.role_distiller import RoleDistiller
 from src.actor_profiler import ActorProfiler
 from src.matching_engine import MatchingEngine
 from src.llm_client import LLMClient
-from src.models import RoleCard
+from src.models import RoleCard, CrewAnalysisResult
 from src.actor_models import ActorProfile
+from src.crew_analyzer import CrewAnalyzer
 
 
 # ============================================================
@@ -40,10 +41,12 @@ class AppState:
         self.role_distiller = RoleDistiller(llm_client=self.llm_client)
         self.actor_profiler = ActorProfiler(llm_client=self.llm_client)
         self.matching_engine = MatchingEngine(llm_client=self.llm_client)
+        self.crew_analyzer = CrewAnalyzer(llm_client=self.llm_client)
 
         self.role_cards = []       # 已生成的角色卡列表
         self.actor_profiles = []   # 已生成的演员画像列表
         self.casting_report = None # 选角报告
+        self.crew_analysis = None  # 制作团队需求分析结果
 
     def is_mock(self):
         return self.llm_client.is_mock_mode
@@ -207,6 +210,78 @@ def format_match_result_markdown(match) -> str:
         lines.append("|------|------|------|------|")
         for ds in match.dimension_scores:
             lines.append(f"| {ds.dimension} | {ds.score:.0f} | {ds.reason} | {ds.risk} |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_crew_analysis_markdown(analysis: CrewAnalysisResult) -> str:
+    """将制作团队需求分析结果格式化为 Markdown"""
+    if not analysis or not analysis.requirements:
+        return "### 暂无分析结果\n\n请输入剧本后点击分析按钮。"
+
+    lines = [
+        f"## 🎬 制作团队需求分析",
+        f"",
+        f"**剧本**：{analysis.script_title or '未识别'}",
+        f"**场景数**：{analysis.total_scenes} | **角色数**：{analysis.total_characters}",
+        f"**制作规模**：{analysis.production_scale or '未评估'}",
+        f"",
+    ]
+
+    # 统计需要的岗位
+    needed = [r for r in analysis.requirements.values() if r.needed]
+    not_needed = [r for r in analysis.requirements.values() if not r.needed]
+
+    if needed:
+        lines.append("### ✅ 需要的岗位")
+        lines.append("")
+        lines.append("| 岗位 | 人数 | 复杂度 | 核心技能 |")
+        lines.append("|------|------|--------|----------|")
+        for r in needed:
+            skills = "、".join(r.skill_requirements[:2]) if r.skill_requirements else "-"
+            lines.append(f"| {r.role_name} | {r.headcount}人 | {r.complexity}/10 | {skills} |")
+        lines.append("")
+
+    if not_needed:
+        lines.append(f"### ➖ 不需要的岗位")
+        lines.append("")
+        lines.append(f"{', '.join(r.role_name for r in not_needed)}")
+        lines.append("")
+
+    # 详细信息
+    lines.append("### 📋 岗位详情")
+    lines.append("")
+    for key, req in analysis.requirements.items():
+        status = "✅ 需要" if req.needed else "➖ 不需要"
+        lines.append(f"#### {req.role_name}（{status}）")
+        lines.append("")
+        if req.needed:
+            lines.append(f"- **建议人数**：{req.headcount}人")
+            lines.append(f"- **复杂度**：{req.complexity}/10")
+            if req.skill_requirements:
+                lines.append(f"- **技能要求**：{', '.join(req.skill_requirements)}")
+            if req.special_needs:
+                lines.append(f"- **特殊需求**：{req.special_needs}")
+            if req.evidence:
+                lines.append(f"- **剧本依据**：")
+                for ev in req.evidence[:3]:
+                    lines.append(f"  - {ev}")
+                if len(req.evidence) > 3:
+                    lines.append(f"  - ... 等共{len(req.evidence)}条")
+            if req.notes:
+                lines.append(f"- **备注**：{req.notes}")
+        else:
+            if req.notes:
+                lines.append(f"- {req.notes}")
+            elif req.evidence:
+                lines.append(f"- 依据：{req.evidence[0]}")
+        lines.append("")
+
+    if analysis.overall_summary:
+        lines.append("### 💡 总体建议")
+        lines.append("")
+        lines.append(f"> {analysis.overall_summary}")
         lines.append("")
 
     return "\n".join(lines)
@@ -468,6 +543,25 @@ def run_full_matching():
 
 
 # ============================================================
+# 标签页 4：制作团队需求分析
+# ============================================================
+
+def analyze_crew(script_text):
+    """执行制作团队需求分析"""
+    if not script_text or not script_text.strip():
+        return "⚠️ 请输入剧本内容", ""
+
+    try:
+        analysis = state.crew_analyzer.analyze(script_text)
+        state.crew_analysis = analysis
+        markdown = format_crew_analysis_markdown(analysis)
+        json_output = analysis.to_json()
+        return markdown, json_output
+    except Exception as e:
+        return f"❌ 分析失败：{str(e)}", ""
+
+
+# ============================================================
 # Gradio 界面构建
 # ============================================================
 
@@ -689,7 +783,49 @@ def build_ui():
                     outputs=[match_output],
                 )
 
-            # ========== 标签页 4：关于 ==========
+            # ========== 标签页 4：制作团队需求分析 ==========
+            with gr.Tab("🎬 制作团队分析"):
+                gr.Markdown("### 输入剧本，AI 自动分析所需的后台岗位与人员配置")
+                gr.Markdown("支持分析：灯光师、音效师、舞美设计、服装师、道具师、化妆师")
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        crew_script_input = gr.Textbox(
+                            label="剧本内容",
+                            placeholder="在此粘贴剧本，包含舞台指示、场景描述、灯光/音效提示等...",
+                            lines=18,
+                        )
+                        with gr.Row():
+                            crew_load_example_btn = gr.Button("📄 加载示例剧本", variant="secondary")
+                            crew_analyze_btn = gr.Button("🔍 分析制作团队需求", variant="primary", size="lg")
+
+                        gr.Markdown("---")
+                        gr.Markdown("""
+                        **分析维度**：
+                        - 灯光师：灯光提示、场景切换、特殊光效
+                        - 音效师：音效提示、背景音乐、现场播放
+                        - 舞美设计：场景数量、换景难度、舞台装置
+                        - 服装师：服装描述、换装次数、特殊服装
+                        - 道具师：手持道具、场景道具、特殊道具
+                        - 化妆师：特殊化妆、妆面变化
+                        """)
+
+                    with gr.Column(scale=2):
+                        crew_output = gr.Markdown(label="分析结果")
+                        with gr.Accordion("📋 JSON 原始数据", open=False):
+                            crew_json_output = gr.Code(label="JSON", language="json")
+
+                crew_load_example_btn.click(
+                    fn=load_example_script,
+                    outputs=crew_script_input,
+                )
+                crew_analyze_btn.click(
+                    fn=analyze_crew,
+                    inputs=[crew_script_input],
+                    outputs=[crew_output, crew_json_output],
+                )
+
+            # ========== 标签页 5：关于 ==========
             with gr.Tab("ℹ️ 关于"):
                 gr.Markdown("""
                 ## CastingNuwa · 选角女娲
@@ -705,9 +841,10 @@ def build_ui():
                 ### 工作流程
 
                 1. **角色蒸馏**：输入剧本 → AI 自动分析所有角色，生成 7 维度角色卡
-                2. **演员画像**：输入演员材料 → AI 生成 7 维度演员画像
+                2. **演员画像**：输入演员材料 → AI 生成 7 维度演员画像（支持文本/音频/视频）
                 3. **智能匹配**：角色卡 × 演员画像 → 匹配度评分 + 匹配理由 + 风险提示 + 试镜建议
-                4. **选角报告**：全量匹配矩阵 + 推荐汇总
+                4. **制作团队分析**：输入剧本 → AI 分析所需后台岗位（灯光/音效/舞美/服装/道具/化妆）
+                5. **选角报告**：全量匹配矩阵 + 推荐汇总
 
                 ### 角色卡 7 维度
 
@@ -731,8 +868,8 @@ def build_ui():
                 - ✅ Phase 2：演员画像模块（文本分析）
                 - ✅ Phase 3：匹配引擎 + Web 界面
                 - ✅ Phase 4：视频/音频多模态演员画像（Whisper + MediaPipe + librosa）
-                - 🔲 Phase 5：真实场景验证与迭代
-                - 🔲 Phase 5：真实场景验证与迭代
+                - ✅ Phase 5：制作团队需求分析（灯光/音效/舞美/服装/道具/化妆）
+                - 🔲 Phase 6：真实场景验证与迭代
                 """)
 
         gr.Markdown("---")
