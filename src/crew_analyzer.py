@@ -69,10 +69,10 @@ COSTUME_KEYWORDS = {
 
 # 道具相关关键词
 PROPS_KEYWORDS = {
-    "handheld": ["拿着", "手持", "手握", "举起", "挥舞", "递给", "接过", "放下", "拿起", "掏出"],
-    "objects": ["手机", "电话", "信件", "信封", "照片", "镜子", "梳子", "口红", "香水", "钱包", "钥匙", "雨伞", "拐杖", "手杖", "刀", "剑", "枪", "酒杯", "瓶子", "杯子", "书", "笔记本", "笔", "花", "礼物", "盒子", "包裹"],
-    "food": ["食物", "饭菜", "水果", "蛋糕", "面包", "酒", "茶", "咖啡", "水"],
-    "breakable": ["花瓶", "瓷器", "玻璃", "杯子", "盘子", "碗"],
+    "handheld": ["拿着", "手持", "手握", "举起", "挥舞", "递给", "接过", "放下", "拿起", "掏出", "摘下", "脱掉", "戴上", "穿上", "举着", "握着", "抓着"],
+    "objects": ["手机", "电话", "信件", "信封", "照片", "镜子", "梳子", "口红", "香水", "钱包", "钥匙", "雨伞", "拐杖", "手杖", "刀", "剑", "枪", "酒杯", "瓶子", "杯子", "书", "笔记本", "笔", "花", "礼物", "盒子", "包裹", "帽子", "靴子", "鞋", "手套", "围巾", "树墩", "凳子", "椅子", "枕头", "毯子", "绳子", "棍子", "鞭子", "扇子", "烟斗", "香烟", "报纸", "杂志", "地图", "指南针", "望远镜", "照相机", "手提包", "背包", "箱子", "篮子", "桶", "盆", "碗", "盘子", "勺子", "筷子", "圣旨", "玉玺", "令牌", "印章", "王冠", "皇冠", "权杖", "宝珠", "项链", "戒指", "耳环", "手镯"],
+    "food": ["食物", "饭菜", "水果", "蛋糕", "面包", "酒", "茶", "咖啡", "水", "药", "药丸"],
+    "breakable": ["花瓶", "瓷器", "玻璃", "杯子", "盘子", "碗", "镜子", "灯泡"],
 }
 
 # 化妆相关关键词
@@ -168,6 +168,9 @@ class CrewAnalyzer:
         通过关键词匹配和正则表达式分析剧本中的舞台指示、
         灯光/音效/场景/服装/道具/化妆等信息。
 
+        优先识别明确的舞台指示标记（如【灯光：xxx】、【音效：xxx】），
+        再结合全文关键词匹配。
+
         Args:
             script: 剧本文本
 
@@ -177,13 +180,28 @@ class CrewAnalyzer:
         # 提取舞台指示（方括号内的内容）
         stage_directions = self._extract_stage_directions(script)
 
-        # 统计各岗位关键词
+        # 从舞台指示中直接提取各岗位标记
+        explicit_markers = self._extract_explicit_markers(stage_directions)
+
+        # 统计各岗位关键词（全文匹配）
         lighting_stats = self._count_keywords(script, LIGHTING_KEYWORDS)
         sound_stats = self._count_keywords(script, SOUND_KEYWORDS)
         stage_stats = self._count_keywords(script, STAGE_KEYWORDS)
         costume_stats = self._count_keywords(script, COSTUME_KEYWORDS)
         props_stats = self._count_keywords(script, PROPS_KEYWORDS)
         makeup_stats = self._count_keywords(script, MAKEUP_KEYWORDS)
+
+        # 合并明确标记和关键词统计
+        lighting_stats = self._merge_markers(lighting_stats, explicit_markers.get("lighting", []))
+        sound_stats = self._merge_markers(sound_stats, explicit_markers.get("sound", []))
+        stage_stats = self._merge_markers(stage_stats, explicit_markers.get("stage_design", []))
+        costume_stats = self._merge_markers(costume_stats, explicit_markers.get("costume", []))
+        props_stats = self._merge_markers(props_stats, explicit_markers.get("props", []))
+        makeup_stats = self._merge_markers(makeup_stats, explicit_markers.get("makeup", []))
+
+        # 排除误判：自然光、沉默等不应算需求
+        lighting_stats = self._filter_false_positives(lighting_stats, ["自然光", "白天", "阳光", "月光"])
+        sound_stats = self._filter_false_positives(sound_stats, ["沉默", "安静", "寂静", "无声"])
 
         # 估算场景数和角色数
         scene_count = self.estimate_scenes(script)
@@ -285,26 +303,134 @@ class CrewAnalyzer:
         }
 
     @staticmethod
+    def _extract_explicit_markers(stage_directions: List[str]) -> Dict[str, List[str]]:
+        """
+        从舞台指示中提取明确的岗位标记
+
+        识别格式如：【灯光：xxx】、【音效：xxx】、【服装：xxx】等
+
+        Args:
+            stage_directions: 舞台指示列表
+
+        Returns:
+            各岗位的明确标记内容
+        """
+        markers = {
+            "lighting": [],
+            "sound": [],
+            "stage_design": [],
+            "costume": [],
+            "props": [],
+            "makeup": [],
+        }
+
+        # 岗位标记关键词映射
+        marker_map = {
+            "lighting": ["灯光", "光线", "照明", "light"],
+            "sound": ["音效", "音乐", "声音", "声响", "sound", "music"],
+            "stage_design": ["场景", "布景", "舞台", "舞美", "scene", "stage"],
+            "costume": ["服装", "穿着", "着装", "costume"],
+            "props": ["道具", "物件", "props"],
+            "makeup": ["化妆", "妆容", "妆面", "makeup"],
+        }
+
+        for direction in stage_directions:
+            for role_key, keywords in marker_map.items():
+                for kw in keywords:
+                    # 匹配 "关键词：内容" 或 "关键词:内容" 格式
+                    pattern = re.compile(re.escape(kw) + r"\s*[：:]\s*(.+?)(?:[，。；]|$)")
+                    matches = pattern.findall(direction)
+                    for m in matches:
+                        m_clean = m.strip()
+                        if m_clean and m_clean not in markers[role_key]:
+                            markers[role_key].append(m_clean)
+                    # 如果整个舞台指示就是岗位标记（如"【灯光：昏暗】"），也记录
+                    if kw in direction and "：" in direction:
+                        full = f"{kw}：{direction.split('：', 1)[1].strip()}"
+                        if full not in markers[role_key]:
+                            markers[role_key].append(full)
+
+        return markers
+
+    @staticmethod
+    def _merge_markers(stats: Dict, markers: List[str]) -> Dict:
+        """
+        合并明确标记和关键词统计
+
+        Args:
+            stats: 关键词统计结果
+            markers: 明确标记列表
+
+        Returns:
+            合并后的统计结果
+        """
+        if not markers:
+            return stats
+
+        merged = dict(stats)
+        merged["total"] = stats["total"] + len(markers) * 2  # 明确标记权重更高
+        merged["matches"] = list(stats.get("matches", []))
+        for m in markers:
+            if m not in merged["matches"]:
+                merged["matches"].append(m)
+        merged["matches"] = merged["matches"][:5]
+        return merged
+
+    @staticmethod
+    def _filter_false_positives(stats: Dict, exclude_words: List[str]) -> Dict:
+        """
+        过滤误判词
+
+        Args:
+            stats: 统计结果
+            exclude_words: 需要排除的词
+
+        Returns:
+            过滤后的统计结果
+        """
+        if not stats.get("matches"):
+            return stats
+
+        filtered = dict(stats)
+        filtered_matches = []
+        removed_count = 0
+
+        for m in stats["matches"]:
+            if any(word in m for word in exclude_words):
+                removed_count += 1
+            else:
+                filtered_matches.append(m)
+
+        filtered["matches"] = filtered_matches
+        filtered["total"] = max(0, stats["total"] - removed_count * 2)
+        return filtered
+
+    @staticmethod
     def _estimate_characters(script: str) -> int:
         """估算剧本中的角色数（基于行首角色名模式）"""
-        # 中文角色名：2-4个字，行首，后接冒号
-        pattern_cn = r"^([\u4e00-\u9fa5]{2,4})[：:]"
-        # 英文角色名：全大写或首字母大写，行首，后接冒号
-        pattern_en = r"^([A-Z][A-Z\s]{1,20})[：:]"
+        # 中文角色名：2-6个字，行首，后接冒号
+        pattern_cn = r"^([\u4e00-\u9fa5]{2,6})[：:]"
+        # 英文角色名：全大写或首字母大写，行首，后接冒号，2-20个字符
+        pattern_en = r"^([A-Z][A-Za-z\s]{1,25})[：:]"
 
         characters = set()
         for line in script.split("\n"):
             line = line.strip()
+            # 跳过舞台指示行
+            if line.startswith("【") or line.startswith("[") or line.startswith("（"):
+                continue
             m = re.match(pattern_cn, line)
             if m:
                 name = m.group(1)
-                if name not in ["旁白", "解说", "幕布", "舞台", "灯光", "音乐", "音效", "场景", "地点"]:
+                if name not in ["旁白", "解说", "幕布", "舞台", "灯光", "音乐", "音效", "场景", "地点", "服装", "道具", "化妆", "布景"]:
                     characters.add(name)
             else:
                 m = re.match(pattern_en, line)
                 if m:
                     name = m.group(1).strip()
-                    characters.add(name)
+                    # 过滤常见非角色词
+                    if name.upper() not in ["SCENE", "ACT", "LIGHTING", "SOUND", "MUSIC", "COSTUME", "PROPS", "MAKEUP", "STAGE"]:
+                        characters.add(name)
 
         return max(len(characters), 1)
 
@@ -332,9 +458,9 @@ class CrewAnalyzer:
             character_count +
             lighting + sound + stage + costume + props + makeup
         )
-        if score >= 40:
+        if score >= 50:
             return "大型"
-        elif score >= 20:
+        elif score >= 25:
             return "中型"
         else:
             return "小型"
@@ -464,7 +590,7 @@ class CrewAnalyzer:
             headcount=headcount if needed else 0,
             complexity=complexity if needed else 0,
             skill_requirements=skills if needed else [],
-            evidence=stats["matches"][:3] if needed else [],
+            evidence=stats["matches"][:3] if needed and stats["matches"] else [f"剧本共{scene_count}个场景，需基础舞台布景"] if needed else [],
             special_needs=special,
             notes=f"剧本共{scene_count}个场景" if needed else "",
         )
