@@ -199,7 +199,7 @@ class AudioProcessor:
             output_path = os.path.join(tempfile.gettempdir(), f"extracted_audio_{os.getpid()}.wav")
 
         try:
-            from moviepy.editor import VideoFileClip
+            from moviepy import VideoFileClip
             video = VideoFileClip(video_path)
             audio = video.audio
             if audio is not None:

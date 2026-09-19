@@ -28,29 +28,32 @@ from .llm_client import LLMClient
 # 多模态 Prompt
 # ============================================================
 
-MULTIMODAL_SYSTEM_PROMPT = """你是一位资深选角导演与表演指导，拥有二十年演员评估与选角经验。
-你擅长综合演员的文本材料、声音表现和视觉表现，进行全面、客观的多维度评估。
+MULTIMODAL_SYSTEM_PROMPT = """你是一位选角观察助手，帮助导演整理试镜观察，而不是给演员打分下结论。
 
-你的评估严格遵循演员画像的 7 个维度：
-1. 基本信息
-2. 声线特质（音高、音色、清晰度、语速节奏、共鸣、情感表达、优势/局限）
-3. 面部表现力（表情幅度、微表情控制、眼神传达、优势/局限）
-4. 肢体表现力（手势丰富度、姿态自然度、空间使用、移动流畅度、优势/局限）
-5. 情感表达范围（能表达的情感种类、情感深度、转换流畅度、最擅长/较弱）
-6. 气质类型（主要/次要气质、整体印象、适合/不适合的戏剧类型）
-7. 表演风格与潜力（风格倾向、自然度、节奏感、台词功底、即兴能力、学习能力、经验水平、潜力、发展建议）
+你的职责是把文本、声音、视觉三方面的材料整理成观察记录：
+1. 记录可观察的事实（停顿、语速/音量变化、动作、表情、台词处理），标注时间或位置
+2. 对事实提出可能的解释，同时保留其他解释
+3. 区分直接观察、推断和无法判断
+4. 建议下一轮如何验证（换什么指令、观察什么变化）
 
-【重要规则】
-- 综合所有可用的模态信息（文本/音频/视觉），不要只依赖单一模态
-- 声学特征和视觉特征是客观数据，文本材料是主观描述，两者要相互印证和补充
-- 如果某个模态的信息缺失，明确标注"该维度基于XX模态分析"，不要编造
-- 评估要客观、具体，避免泛泛而谈
-- 优势和局限要平衡，既要肯定也要指出不足
-- 潜力评估要考虑演员的经验水平、学习能力和多模态表现的一致性
-- 输出必须是严格的 JSON 格式
+【必须区分三个概念】
+- 特征强度：表演是否外放（风格，不是好坏）
+- 表演质量：表达是否准确服务情境（需要导演判断，你只提供线索）
+- 角色匹配：是否适合特定角色（不取决于性格相似度）
+
+声音或动作变化只能作为观察线索，不能直接推出"演得好""情感真实"。
+例如：停顿可能表达犹豫，也可能是回忆台词，需要在 verification_suggestion 中建议如何区分。
+
+【模态缺失处理】
+- 声学/视觉特征是客观数据，文本是主观描述，两者相互印证
+- 某个模态缺失时，明确在 analysis_warnings 中说明，不要编造该模态的观察
+- 材料不足的维度生成 verification_items（待验证项），不要硬给中等分
+- 自我介绍自述放入 evidence.self_reports，与实际表演观察分开
+
+输出必须是严格的 JSON 格式。
 """
 
-MULTIMODAL_USER_PROMPT_TEMPLATE = """请对以下演员进行多模态综合画像分析。
+MULTIMODAL_USER_PROMPT_TEMPLATE = """请整理以下演员试镜材料的多模态观察记录。
 
 【演员基本信息】
 {basic_info}
@@ -60,22 +63,24 @@ MULTIMODAL_USER_PROMPT_TEMPLATE = """请对以下演员进行多模态综合画�
 {text_material}
 ---
 
-【音频分析结果】（基于试镜音频/视频的声学特征分析）
+【音频分析结果】（客观声学特征）
 ---
 {audio_analysis}
 ---
 
-【视觉分析结果】（基于试镜视频的面部表情和肢体语言分析）
+【视觉分析结果】（客观面部/肢体特征，可能因技术限制缺失）
 ---
 {vision_analysis}
 ---
 
 【可用模态】{available_modalities}
 
-请综合以上所有信息，输出该演员的完整画像 JSON，结构如下：
+请输出观察记录 JSON，结构如下：
 {{
   "actor_name": "演员姓名",
   "analysis_sources": ["text", "audio", "video"],
+  "analysis_status": "complete / partial / failed",
+  "analysis_warnings": ["缺失或降级的模态说明"],
   "basic_info": {{
     "name": "",
     "age_gender": "",
@@ -83,62 +88,74 @@ MULTIMODAL_USER_PROMPT_TEMPLATE = """请对以下演员进行多模态综合画�
     "background": "",
     "self_description": ""
   }},
+  "observations": [
+    {{
+      "timestamp": "时间段",
+      "observed_behavior": "可观察事实（停顿/语速/音量/动作/表情）",
+      "possible_interpretation": "可能意味着什么",
+      "alternative_interpretations": ["其他解释"],
+      "evidence_type": "直接观察/推断/无法判断",
+      "confidence": "高/中/低/无法判断",
+      "verification_suggestion": "下一轮怎么验证",
+      "related_requirement": "",
+      "source": "video/audio/text"
+    }}
+  ],
+  "verification_items": [
+    {{
+      "item": "待验证能力",
+      "why_needed": "对应什么要求",
+      "current_evidence": "目前证据",
+      "suggested_task": "补充试镜任务",
+      "priority": "高/中/低"
+    }}
+  ],
+  "evidence": {{
+    "self_reports": ["自我介绍自述（未经表演验证）"],
+    "past_experience": ["过往经历"],
+    "material_gaps": ["材料缺失说明"]
+  }},
+  "adjustment_responses": [],
   "vocal_traits": {{
-    "pitch": "",
-    "timbre": "",
-    "clarity": "",
-    "pace": "",
-    "resonance": "",
-    "emotional_expression": "",
-    "strengths": [],
-    "limitations": []
+    "pitch": "", "timbre": "", "clarity": "", "pace": "",
+    "resonance": "", "emotional_expression": "",
+    "strengths": [], "limitations": []
   }},
   "facial_expressiveness": {{
-    "expression_range": "",
-    "micro_expression": "",
-    "eye_contact": "",
-    "facial_symmetry": "",
-    "strengths": [],
-    "limitations": []
+    "expression_range": "", "micro_expression": "", "eye_contact": "",
+    "facial_symmetry": "", "strengths": [], "limitations": []
   }},
   "physical_expressiveness": {{
-    "gesture_richness": "",
-    "posture_naturalness": "",
-    "spatial_usage": "",
-    "movement_flow": "",
-    "body_awareness": "",
-    "strengths": [],
-    "limitations": []
+    "gesture_richness": "", "posture_naturalness": "", "spatial_usage": "",
+    "movement_flow": "", "body_awareness": "", "strengths": [], "limitations": []
   }},
   "emotional_range": {{
-    "expressible_emotions": [],
-    "emotional_depth": "",
-    "transition_fluency": "",
-    "strongest_emotions": [],
-    "weakest_emotions": [],
-    "notes": ""
+    "expressible_emotions": [], "emotional_depth": "", "transition_fluency": "",
+    "strongest_emotions": [], "weakest_emotions": [], "notes": ""
   }},
   "temperament": {{
-    "primary_type": "",
-    "secondary_type": "",
-    "overall_impression": "",
-    "suitable_genres": [],
-    "unsuitable_genres": []
+    "primary_type": "", "secondary_type": "", "overall_impression": "",
+    "suitable_genres": [], "unsuitable_genres": []
   }},
   "acting_style": {{
-    "style_tendency": "",
-    "naturalness": "",
-    "rhythm_sense": "",
-    "line_delivery": "",
-    "improvisation": "",
-    "learning_ability": "",
-    "experience_level": "",
-    "potential": "",
-    "development_suggestions": []
+    "style_tendency": "", "naturalness": "", "rhythm_sense": "",
+    "line_delivery": "", "improvisation": "", "learning_ability": "",
+    "experience_level": "", "potential": "", "development_suggestions": []
+  }},
+  "quantitative_traits": {{
+    "extraversion": {{"score": null, "evidence_count": 0, "evidence": [], "confidence": "无法判断"}},
+    "emotional_intensity": {{"score": null, "evidence_count": 0, "evidence": [], "confidence": "无法判断"}},
+    "rationality": {{"score": null, "evidence_count": 0, "evidence": [], "confidence": "无法判断"}},
+    "dominance": {{"score": null, "evidence_count": 0, "evidence": [], "confidence": "无法判断"}},
+    "credibility": {{"score": null, "evidence_count": 0, "evidence": [], "confidence": "无法判断"}}
   }}
 }}
 
-输出纯 JSON，不要有任何额外文字。
+请确保：
+1. observations 至少3条，基于实际提供的声学/视觉/文本数据，不要编造缺失模态的观察
+2. 视觉或音频数据缺失时，在 analysis_warnings 说明，并把相关能力放入 verification_items
+3. 量化分数只反映特征强度，证据不足设为 null
+4. 输出纯 JSON，不要有任何额外文字。
 """
 
 
@@ -263,23 +280,34 @@ class MultimodalAnalyzer:
         Returns:
             多模态分析结果
         """
-        # 确定可用模态
+        # 确定可用模态及降级状态
         modalities = []
+        modality_warnings = []
         if text_material:
             modalities.append("text")
         if audio_result:
             modalities.append("audio")
+            # 音频转写为空说明音频分析实际未成功
+            if not getattr(audio_result, "transcript", "") and not text_material:
+                modality_warnings.append("音频转写为空，可能无人声或转写失败")
         if vision_result:
             modalities.append("video")
+            # 视觉分析降级（如 mediapipe solutions 不可用）
+            vision_warnings = getattr(vision_result, "warnings", [])
+            if vision_warnings:
+                modality_warnings.extend(vision_warnings)
 
         print(f"\n{'='*60}")
-        print(f"  CastingNuwa · 多模态融合分析")
+        print(f"  CastingNuwa · 多模态观察记录")
         print(f"  演员：{actor_name or '未命名'}")
         print(f"  可用模态：{', '.join(modalities) if modalities else '无'}")
+        if modality_warnings:
+            for w in modality_warnings:
+                print(f"  ⚠️  {w}")
         print(f"{'='*60}\n")
 
         if self.llm.is_mock_mode:
-            print(f"  ⚠️  当前为 Mock 演示模式")
+            print(f"  ⚠️  当前为 Mock 演示模式，结果为示例数据，不能作为真实选角依据")
 
         # 格式化各模态信息
         audio_text = self._format_audio_analysis(audio_result)
@@ -321,6 +349,21 @@ class MultimodalAnalyzer:
                     profile.actor_name = actor_name
                 profile.analysis_sources = modalities
 
+                # 设置分析状态：有降级警告则 partial，模态齐全无警告则 complete
+                if modality_warnings:
+                    profile.analysis_status = "partial"
+                    for w in modality_warnings:
+                        if w not in profile.analysis_warnings:
+                            profile.analysis_warnings.append(w)
+                else:
+                    profile.analysis_status = "complete"
+
+                # Mock 模式显式标记
+                if self.llm.is_mock_mode:
+                    profile.analysis_status = "demo"
+                    if "当前为演示数据，非真实分析结果" not in profile.analysis_warnings:
+                        profile.analysis_warnings.append("当前为演示数据，非真实分析结果")
+
                 # 构建分析报告
                 report = self._build_analysis_report(
                     actor_name=profile.actor_name,
@@ -338,19 +381,25 @@ class MultimodalAnalyzer:
                     analysis_report=report,
                 )
 
-                print(f"  ✅ 多模态分析完成：{profile.actor_name}")
-                print(f"     使用模态：{', '.join(modalities)}")
+                print(f"  ✅ 观察记录完成：{profile.actor_name}（状态：{profile.analysis_status}）")
+                print(f"     观察记录 {len(profile.observations)} 条，待验证项 {len(profile.verification_items)} 条")
                 return analysis_result
 
             except Exception as e:
-                print(f"  ❌ 演员画像构建失败：{e}")
+                print(f"  ❌ 观察记录构建失败：{e}")
                 if attempt < max_retries:
                     continue
                 break
 
-        # 失败时返回空结果
+        # 失败时明确返回 failed 状态，不允许空画像冒充成功
+        failed_profile = ActorProfile(
+            actor_name=actor_name,
+            analysis_sources=modalities,
+            analysis_status="failed",
+            analysis_warnings=["分析失败，未生成有效观察记录，请重试或检查材料/API配置"],
+        )
         return MultimodalAnalysisResult(
-            actor_profile=ActorProfile(actor_name=actor_name, analysis_sources=modalities),
+            actor_profile=failed_profile,
             modalities_used=modalities,
         )
 

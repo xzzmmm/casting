@@ -28,22 +28,24 @@ class ActorProfiler:
         actor_material: str,
         actor_name: str = "",
         material_note: str = "以下为演员的自我介绍和试镜转写文本。",
+        role_requirements: str = "（本次未提供具体角色要求，请基于材料生成通用观察记录和待验证项）",
         max_retries: int = 2,
     ) -> Optional[ActorProfile]:
         """
-        从文本材料生成演员画像
+        从文本材料生成演员观察记录
 
         Args:
             actor_material: 演员材料（自我介绍+试镜转写等）
             actor_name: 演员姓名（可选，材料中没有时使用）
             material_note: 材料说明
+            role_requirements: 目标角色的可观察表演要求（用于关联观察）
             max_retries: 最大重试次数
 
         Returns:
-            演员画像，失败返回 None
+            演员画像（含观察记录），失败返回 None
         """
         print(f"\n{'='*60}")
-        print(f"  CastingNuwa · 演员画像（文本模式）")
+        print(f"  CastingNuwa · 演员观察记录（文本模式）")
         print(f"  目标：{actor_name or '未命名演员'}")
         print(f"{'='*60}\n")
 
@@ -53,6 +55,7 @@ class ActorProfiler:
         user_prompt = ACTOR_USER_PROMPT_TEMPLATE.format(
             actor_material=actor_material,
             material_note=material_note,
+            role_requirements=role_requirements,
         )
 
         for attempt in range(max_retries + 1):

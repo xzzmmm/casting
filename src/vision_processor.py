@@ -153,6 +153,7 @@ class VisionAnalysisResult:
     frames_extracted: int = 0
     video_path: str = ""
     analysis_sources: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -161,6 +162,7 @@ class VisionAnalysisResult:
             "frames_extracted": self.frames_extracted,
             "video_path": self.video_path,
             "analysis_sources": self.analysis_sources,
+            "warnings": self.warnings,
         }
 
 
@@ -202,7 +204,12 @@ class VisionProcessor:
 
         try:
             import mediapipe as mp
-            self._mediapipe_available = True
+            # mediapipe 1.0+ / Python 3.13 构建移除了 solutions API
+            if hasattr(mp, 'solutions'):
+                self._mediapipe_available = True
+            else:
+                self._mediapipe_available = False
+                print("  ⚠️  mediapipe 已安装但无 solutions API（版本过新或 Python 3.13 构建），视觉分析将跳过")
         except ImportError:
             pass
 
@@ -615,6 +622,12 @@ class VisionProcessor:
         result.frames_extracted = len(frames)
 
         if len(frames) == 0:
+            return result
+
+        # mediapipe 不可用时跳过视觉分析（优雅降级）
+        if not self._mediapipe_available:
+            result.warnings.append("mediapipe solutions API 不可用，已跳过高阶视觉分析（面部表情/肢体语言）")
+            print("  ⚠️  mediapipe solutions 不可用，跳过面部/肢体分析，仅保留基础帧信息")
             return result
 
         # 面部表情分析

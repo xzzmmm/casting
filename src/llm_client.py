@@ -163,6 +163,209 @@ class LLMClient:
         return {"_parse_error": "无法从 LLM 输出中提取 JSON", "_raw_output": text[:2000]}
 
     def _mock_response(self, system_prompt: str, user_prompt: str) -> str:
+        """Mock 包装：调用原始示例数据后注入 v0.5 字段，并显式标记为演示数据"""
+        raw = self._mock_response_raw(system_prompt, user_prompt)
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return raw
+
+        # 多角色蒸馏结果
+        if isinstance(data, dict) and isinstance(data.get("roles"), list):
+            for role in data["roles"]:
+                self._inject_demo_requirements(role)
+            return json.dumps(data, ensure_ascii=False)
+
+        # 单角色蒸馏结果
+        if isinstance(data, dict) and isinstance(data.get("casting_guide"), dict):
+            self._inject_demo_requirements(data)
+            return json.dumps(data, ensure_ascii=False)
+
+        # 演员画像
+        if isinstance(data, dict) and "actor_name" in data and "vocal_traits" in data:
+            self._inject_demo_observations(data, user_prompt)
+            return json.dumps(data, ensure_ascii=False)
+
+        return raw
+
+    @staticmethod
+    def _inject_demo_requirements(role: dict) -> None:
+        """为演示角色卡补充可观察表演要求"""
+        guide = role.setdefault("casting_guide", {})
+        if guide.get("observable_requirements"):
+            return
+        guide["observable_requirements"] = [
+            {
+                "requirement": "在压力冲突中保持语速平稳，用短促有力的句子表达态度",
+                "observable_signals": ["语速", "平稳", "短句"],
+                "source_trait": "克制与坚定",
+                "must_have": True,
+                "audition_check": "给一段冲突台词，观察情绪升级时语速是否失控",
+            },
+            {
+                "requirement": "脆弱流露时借助停顿和回避目光，而非外放哭泣",
+                "observable_signals": ["停顿", "回避目光", "低头"],
+                "source_trait": "外强中干",
+                "must_have": True,
+                "audition_check": "独处独白，观察脆弱如何通过细节外化",
+            },
+            {
+                "requirement": "鼓励他人时目光直视、姿态挺拔",
+                "observable_signals": ["直视", "挺拔", "目光"],
+                "source_trait": "责任感",
+                "must_have": False,
+                "audition_check": "鼓励社员段落，观察眼神接触与姿态，可通过排练引导",
+            },
+            {
+                "requirement": "情绪临界点用克制肢体（攥拳、转身）而非大幅度动作",
+                "observable_signals": ["克制", "攥拳", "有限动作"],
+                "source_trait": "隐忍",
+                "must_have": False,
+                "audition_check": "爆发前段落，观察肢体幅度是否收敛",
+            },
+        ]
+
+    def _inject_demo_observations(self, profile: dict, user_prompt: str = "") -> None:
+        """为演示演员画像补充观察记录。
+
+        依据试镜材料的主导风格（外放 vs 克制）互斥生成观察，
+        使候选方案的三分类在演示中有真实区分度，而不是正反证据混杂。
+        """
+        profile["analysis_status"] = "demo"
+        warnings = profile.setdefault("analysis_warnings", [])
+        if not any("演示数据" in w for w in warnings):
+            warnings.append("当前为演示数据，非真实分析结果，不能作为选角依据")
+
+        if profile.get("observations"):
+            return
+
+        # 只统计【演员材料】段落，避免提示词模板中的教学用词干扰风格判定
+        material_match = re.search(
+            r"【演员材料】\s*-+\s*(.*?)\s*-+\s*【材料说明】",
+            user_prompt or "", re.DOTALL,
+        )
+        material = material_match.group(1) if material_match else (
+            user_prompt or json.dumps(profile, ensure_ascii=False)
+        )
+
+        outward_words = ["砸", "猛地", "提高", "失控", "夸张", "大幅度", "外放",
+                         "吼", "喊", "拍", "挥", "大步", "张扬", "激烈", "咆哮"]
+        restrained_words = ["停顿", "回避", "低头", "沉默", "小声", "压抑", "平静",
+                            "发抖", "泛红", "收敛", "克制", "轻声", "犹豫", "垂下"]
+        outward_score = sum(material.count(w) for w in outward_words)
+        restrained_score = sum(material.count(w) for w in restrained_words)
+        is_outward = outward_score > restrained_score
+
+        observations = []
+
+        def add(ts, behavior, interp, alts, etype, conf, verify, related, source):
+            observations.append({
+                "timestamp": ts,
+                "observed_behavior": behavior,
+                "possible_interpretation": interp,
+                "alternative_interpretations": alts,
+                "evidence_type": etype,
+                "confidence": conf,
+                "verification_suggestion": verify,
+                "related_requirement": related,
+                "source": source,
+            })
+
+        if is_outward:
+            # 外放爆发型：与克制隐忍角色的多数要求相反
+            add("0:08-0:20",
+                "情绪升级时语速持续加快、几乎不停顿，台词连贯抢出",
+                "倾向于用外放强度推进情绪，缺少角色需要的停顿与留白",
+                ["也可能是对片段理解为『就要爆发』"],
+                "直接观察", "中",
+                "要求把同一段语速压稳、在关键词前主动停顿，比较能否控制节奏",
+                "在压力冲突中保持语速平稳", "text")
+            add("0:25-0:33",
+                "情绪临界点猛地一拳砸在桌上、身体大幅度前倾，直视对手",
+                "肢体表达外放，与角色要求的克制肢体（攥拳、转身）相反；但目光直视有张力",
+                ["可能适合另一个更外放的角色"],
+                "直接观察", "中",
+                "给『把情绪压到最低、只用攥拳和转身表达』的指令后复试，观察能否收敛",
+                "情绪临界点用克制肢体", "text")
+            add("0:40",
+                "表达态度时紧盯对手、目光直接",
+                "具备直视建立压迫感的能力，符合鼓励/对峙段落",
+                ["也可能是辩论习惯带来的固定强势目光"],
+                "直接观察", "中",
+                "观察在需要回避、示弱的段落能否切换目光",
+                "鼓励他人时目光直视", "text")
+        else:
+            # 克制内敛型：支持停顿、回避目光、克制肢体等要求
+            add("0:12-0:18",
+                "关键情绪处出现明显停顿，目光下垂、回避对手，声音发抖但努力保持平静",
+                "用停顿和回避目光外化不愿外露的脆弱，且仍努力控制语速",
+                ["也可能是不熟练或紧张"],
+                "直接观察", "中",
+                "换『掩饰真实意图』指令再演，比较停顿是否仍服务于情绪而非忘词",
+                "脆弱流露时借助停顿和回避目光", "text")
+            add("0:30-0:40",
+                "情绪升级段落句子变短，但语速没有失控，断续地把话说完",
+                "在压力下仍保持了相对平稳、短促的表达",
+                ["也可能是文本本身句子短"],
+                "直接观察", "中",
+                "给更激烈的冲突台词，检验语速在更强压力下是否仍可控",
+                "在压力冲突中保持语速平稳", "text")
+            add("0:50-1:00",
+                "独白时手势很少，仅有一次攥紧衣角的细微动作，身体保持收敛",
+                "肢体克制，符合隐忍角色需要的有限动作",
+                ["也可能是放不开"],
+                "直接观察", "中",
+                "给明确外放指令，检验能否在需要时放开，区分『克制』与『不敢动』",
+                "情绪临界点用克制肢体", "text")
+
+        profile["observations"] = observations
+
+        # 待验证项
+        verification = []
+        if is_outward:
+            verification.append({
+                "item": "克制与留白能力",
+                "why_needed": "目标角色要求停顿、回避和有限肢体，当前呈现相反",
+                "current_evidence": "试镜片段以砸桌、提速、外放为主",
+                "suggested_task": "用『压住情绪、只用一个细微动作』的约束复试",
+                "priority": "高",
+            })
+        else:
+            verification.append({
+                "item": "强情绪临界点的内在张力",
+                "why_needed": "角色在隐忍后仍需让观众感到即将爆发的张力",
+                "current_evidence": "内敛处理到位，但缺少临界点片段",
+                "suggested_task": "给一段从压抑到临界的递进独白，观察张力是否成立",
+                "priority": "中",
+            })
+        verification.append({
+            "item": "接受并执行导演调整指令的能力",
+            "why_needed": "区分第一次碰巧合适与能稳定执行指导",
+            "current_evidence": "仅有第一遍自然表演",
+            "suggested_task": "第一遍后给一条明确调整指令，第二遍观察变化",
+            "priority": "高",
+        })
+        profile["verification_items"] = verification
+
+        # 证据按来源分离
+        basic = profile.get("basic_info", {})
+        self_reports = []
+        if basic.get("self_description"):
+            self_reports.append(basic.get("self_description"))
+        past = []
+        if basic.get("experience"):
+            past.append(basic.get("experience"))
+        if basic.get("background"):
+            past.append(basic.get("background"))
+        profile["evidence"] = {
+            "performance_evidence": [o["observed_behavior"] for o in observations],
+            "self_reports": self_reports,
+            "past_experience": past,
+            "material_gaps": ["缺少第二遍指导后复试记录", "缺少与对手的对手戏化学反应观察"],
+        }
+        profile.setdefault("adjustment_responses", [])
+
+    def _mock_response_raw(self, system_prompt: str, user_prompt: str) -> str:
         """
         Mock 响应：返回预设的示例数据
 

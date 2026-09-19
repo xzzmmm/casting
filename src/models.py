@@ -146,6 +146,68 @@ class CastingGuide:
     audition_focus: str = ""         # 试镜时建议考察的重点
     risks: str = ""                  # 选角风险提示
     chemistry_requirements: List[str] = field(default_factory=list)  # 与其他角色的化学反应要求
+    observable_requirements: List["ObservableRequirement"] = field(default_factory=list)  # 可观察表演要求
+
+
+@dataclass
+class ObservableRequirement:
+    """
+    可观察表演要求
+
+    把"角色内向"这种性格标签，转化为"演员需要做什么、观众能看到什么"。
+    例如：
+      性格标签：内向
+      可观察要求：需要通过停顿、回避目光和有限动作，让观众理解角色不愿表露的情绪
+    """
+    requirement: str = ""            # 可观察的表演要求（演员需要做到什么）
+    observable_signals: List[str] = field(default_factory=list)  # 具体可观察信号（停顿/目光/动作/语气变化）
+    source_trait: str = ""           # 对应的角色特质（如"内向""暴躁"）
+    must_have: bool = False          # 是否必须满足（True=硬性要求，False=可通过排练改善）
+    audition_check: str = ""         # 试镜时如何检查这一点
+
+
+@dataclass
+class ProductionSettings:
+    """
+    制作与选角设定
+
+    在角色蒸馏后、匹配前，由负责人确认的创作选择。
+    剧本不能决定所有选角要求，需要收集剧团的实际约束。
+    """
+    performance_style: str = ""      # 剧团希望采用的表演风格
+    role_interpretation: str = ""    # 对角色的理解/导演阐述
+    must_have_requirements: List[str] = field(default_factory=list)  # 必须满足的要求
+    can_rehearse: List[str] = field(default_factory=list)  # 可以通过排练改善的要求
+    allow_cross_gender: bool = False  # 是否接受反串
+    allow_double_casting: bool = False  # 是否接受兼角
+    schedule_constraints: str = ""   # 演员档期和排练时间约束
+    confirmed: bool = False          # 负责人是否已确认
+
+
+@dataclass
+class AuditionTask:
+    """
+    试镜任务
+
+    根据角色要求生成的试镜材料和观察指南。
+    支持两轮：第一遍自然表演，第二遍给调整指令后复试。
+    """
+    role_name: str = ""              # 对应角色
+    scene_description: str = ""      # 试镜场景说明（一段统一的试镜材料）
+    script_excerpt: str = ""         # 试镜台词片段
+    observation_focus: List["ObservationFocus"] = field(default_factory=list)  # 观察重点（2-3个）
+    adjustment_instruction: str = ""  # 第一遍后的调整指令（如"这次你非常想让对方留下，但不能让对方察觉"）
+    retest_task: str = ""            # 复试任务（检验调整效果）
+    retest_focus: str = ""           # 复试时重点观察什么变化
+
+
+@dataclass
+class ObservationFocus:
+    """试镜观察重点"""
+    focus: str = ""                  # 观察什么（如"停顿后是否改变了表达方式"）
+    explanation: str = ""            # 容易理解的说明
+    positive_signals: List[str] = field(default_factory=list)  # 正面信号
+    negative_signals: List[str] = field(default_factory=list)  # 负面信号
 
 
 @dataclass
@@ -256,12 +318,26 @@ class RoleCard:
         # casting_guide
         cg = data.get("casting_guide", {})
         if isinstance(cg, dict):
+            obs_reqs_raw = cg.get("observable_requirements", [])
+            obs_reqs = []
+            if isinstance(obs_reqs_raw, list):
+                obs_reqs = [
+                    ObservableRequirement(
+                        requirement=item.get("requirement", ""),
+                        observable_signals=item.get("observable_signals", []) if isinstance(item.get("observable_signals"), list) else [],
+                        source_trait=item.get("source_trait", ""),
+                        must_have=item.get("must_have", False),
+                        audition_check=item.get("audition_check", ""),
+                    )
+                    for item in obs_reqs_raw if isinstance(item, dict)
+                ]
             card.casting_guide = CastingGuide(
                 actor_type=cg.get("actor_type", ""),
                 core_requirements=cg.get("core_requirements", []) if isinstance(cg.get("core_requirements"), list) else [],
                 audition_focus=cg.get("audition_focus", ""),
                 risks=cg.get("risks", ""),
                 chemistry_requirements=cg.get("chemistry_requirements", []) if isinstance(cg.get("chemistry_requirements"), list) else [],
+                observable_requirements=obs_reqs,
             )
 
         # quantitative_traits（量化特质评分）

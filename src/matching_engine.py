@@ -1,15 +1,12 @@
 """
 CastingNuwa · 选角女娲
-匹配引擎（Matching Engine）
+匹配引擎（Matching Engine）v0.5
 
-将角色卡与演员画像进行多维度匹配，
-输出匹配度评分、匹配理由、风险提示和试镜建议。
-
-匹配逻辑：
-1. 硬性匹配（Hard Match）：性别、年龄范围、特殊技能等硬性要求
-2. 数值匹配（Quantitative Match）：5维度量化特质的分值距离计算
-3. 软性匹配（Soft Match）：6维度语义匹配 + LLM 推理
-4. 综合评分：数值分(30%) + 文本分(70%) 加权融合，0-100 分
+核心变化：
+- 从"单一排名分数"改为"候选方案+证据比较+待验证项"
+- 基于角色的可观察表演要求，逐条比较演员的观察证据
+- 输出分类：值得优先试演 / 需要补充试镜 / 存在明确限制
+- 数值匹配降级为快速参考，不作为选角结论中心
 """
 
 import os
@@ -17,66 +14,65 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 
-from .models import RoleCard, QUANTITATIVE_TRAITS
-from .actor_models import ActorProfile
+from .models import RoleCard, QUANTITATIVE_TRAITS, ObservableRequirement
+from .actor_models import ActorProfile, ObservationRecord, VerificationItem
 from .llm_client import LLMClient
 
 
 # ============================================================
-# 匹配结果数据模型
+# 候选方案数据模型（v0.5）
 # ============================================================
 
 @dataclass
-class DimensionScore:
-    """单个维度的匹配评分"""
-    dimension: str = ""               # 维度名称
-    score: float = 0.0                # 评分 0-100
-    reason: str = ""                  # 匹配理由
-    risk: str = ""                    # 风险提示
+class EvidenceComparison:
+    """单条角色要求的证据比较"""
+    requirement: str = ""              # 角色要求（可观察表演要求）
+    must_have: bool = False            # 是否硬性要求
+    actor_evidence: List[str] = field(default_factory=list)  # 演员的观察证据
+    evidence_status: str = "missing"   # supported（有证据支持）/ partial（部分支持）/ missing（缺失）/ contradicted（相反证据）
+    notes: str = ""                    # 说明
 
 
 @dataclass
-class QuantitativeDimensionMatch:
-    """单个量化维度的数值匹配详情"""
-    dimension_key: str = ""           # 维度键（如 extraversion）
-    dimension_name: str = ""          # 维度中文名
-    role_score: Optional[int] = None  # 角色分值
-    actor_score: Optional[int] = None # 演员分值
-    distance: Optional[int] = None    # 分值距离
-    similarity: float = 0.0           # 相似度 0-100
-    included: bool = False            # 是否计入总分（双方都有分值才计入）
+class CastingProposal:
+    """
+    候选方案（替代旧的单一匹配分数）
 
-
-@dataclass
-class MatchResult:
-    """单个角色×演员的匹配结果"""
-    role_name: str = ""
+    分类：
+    - priority_audition：值得优先试演（有证据支持关键要求）
+    - needs_more_audition：需要补充试镜（缺关键证据）
+    - explicit_limit：存在明确限制（档期/硬性要求不满足等）
+    """
     actor_name: str = ""
-    overall_score: float = 0.0        # 综合匹配度 0-100（数值分30% + 文本分70%）
-    match_level: str = ""              # 匹配等级（高度匹配/较为匹配/一般匹配/不太匹配）
-    dimension_scores: List[DimensionScore] = field(default_factory=list)
-    match_reasons: List[str] = field(default_factory=list)   # 匹配理由
-    risks: List[str] = field(default_factory=list)            # 风险提示
-    audition_suggestions: List[str] = field(default_factory=list)  # 试镜建议
-    summary: str = ""                 # 综合评价
-    # 数值匹配层
-    quantitative_score: float = 0.0   # 数值匹配分 0-100（基于5维度量化特质的分值距离）
-    text_score: float = 0.0           # 文本匹配分 0-100（LLM 语义匹配）
-    quantitative_matches: List[QuantitativeDimensionMatch] = field(default_factory=list)  # 各量化维度匹配详情
-    quantitative_weight: float = 0.3  # 数值匹配权重
-    text_weight: float = 0.7          # 文本匹配权重
+    category: str = "needs_more_audition"
+    supported_requirements: List[str] = field(default_factory=list)  # 有证据支持的要求
+    partial_requirements: List[str] = field(default_factory=list)    # 部分支持的要求
+    missing_evidence: List[str] = field(default_factory=list)        # 缺什么证据
+    explicit_limits: List[str] = field(default_factory=list)         # 明确限制
+    tradeoffs: str = ""                # 方案取舍（谁稳定 vs 谁指导后改善明显）
+    stability_note: str = ""           # 当前表现稳定性
+    adjustment_note: str = ""          # 指导后改善情况
+    next_steps: List[str] = field(default_factory=list)  # 下一步建议
+    reference_score: float = 0.0       # 数值参考分（不作为主要依据）
+    evidence_comparisons: List[EvidenceComparison] = field(default_factory=list)  # 逐条证据比较
 
-    def to_dict(self) -> dict:
-        return asdict(self)
+
+@dataclass
+class RoleCastingResult:
+    """单个角色的选角结果"""
+    role_name: str = ""
+    proposals: List[CastingProposal] = field(default_factory=list)
+    chemistry_checks: List[str] = field(default_factory=list)  # 需要安排对手戏验证的组合
+    audition_task_summary: str = ""    # 建议的试镜任务摘要
 
 
 @dataclass
 class CastingReport:
-    """选角报告：所有角色×演员的匹配结果"""
+    """选角报告：所有角色的候选方案"""
     role_count: int = 0
     actor_count: int = 0
-    results: List[MatchResult] = field(default_factory=list)
-    recommendations: Dict[str, str] = field(default_factory=dict)  # 每个角色的推荐演员
+    results: List[RoleCastingResult] = field(default_factory=list)
+    global_notes: List[str] = field(default_factory=list)  # 全局说明（兼角/档期冲突等）
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -84,164 +80,121 @@ class CastingReport:
     def to_json(self, indent: int = 2, ensure_ascii: bool = False) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=ensure_ascii)
 
-    def get_best_actor_for_role(self, role_name: str) -> Optional[MatchResult]:
-        """获取某个角色的最佳匹配演员"""
-        role_results = [r for r in self.results if r.role_name == role_name]
-        if not role_results:
-            return None
-        return max(role_results, key=lambda x: x.overall_score)
+    def get_priority_actors(self, role_name: str) -> List[CastingProposal]:
+        """获取某角色值得优先试演的演员"""
+        for r in self.results:
+            if r.role_name == role_name:
+                return [p for p in r.proposals if p.category == "priority_audition"]
+        return []
 
-    def get_roles_for_actor(self, actor_name: str) -> List[MatchResult]:
-        """获取某个演员适合的所有角色（按匹配度排序）"""
-        actor_results = [r for r in self.results if r.actor_name == actor_name]
-        return sorted(actor_results, key=lambda x: x.overall_score, reverse=True)
+    def get_result_for_role(self, role_name: str) -> Optional[RoleCastingResult]:
+        for r in self.results:
+            if r.role_name == role_name:
+                return r
+        return None
 
 
 # ============================================================
-# 匹配 Prompt
+# 候选方案 Prompt（v0.5）
 # ============================================================
 
-MATCH_SYSTEM_PROMPT = """你是一位资深选角导演，擅长将演员与戏剧角色进行精准匹配。
-你的任务是根据角色卡（角色的认知操作系统）和演员画像（演员的多维度特质），
-进行多维度匹配分析，给出可解释的匹配建议。
+PROPOSAL_SYSTEM_PROMPT = """你是一位选角观察助手，帮助导演整理候选方案，而不是给出单一排名。
 
-匹配分析维度：
-1. 性格与气质匹配：角色性格特质 vs 演员气质类型
-2. 动机与情感深度匹配：角色的情感弧线 vs 演员的情感表达范围
-3. 语言与台词匹配：角色的语言DNA vs 演员的声线特质和台词功底
-4. 行为与肢体匹配：角色的行为模式 vs 演员的肢体表现力
-5. 表演风格匹配：角色需要的表演风格 vs 演员的表演风格倾向
-6. 潜力与可塑性：角色的难度 vs 演员的经验水平和学习能力
+你的任务是基于角色的可观察表演要求和演员的观察记录，逐条比较证据，输出候选方案。
 
-【评分标准】
-- 90-100：高度匹配，演员几乎是为这个角色而生
-- 75-89：较为匹配，演员很适合这个角色，少量方面需要调整
-- 60-74：一般匹配，演员可以胜任但需要较多训练和指导
-- 40-59：不太匹配，演员与角色有明显差距，不建议选角
-- 0-39：完全不匹配
+【候选分类】
+1. priority_audition（值得优先试演）：关键表演要求有直接观察证据支持
+2. needs_more_audition（需要补充试镜）：缺乏关键证据，需要补充试镜任务
+3. explicit_limit（存在明确限制）：档期冲突、硬性要求不满足等
+
+【证据比较原则】
+- 逐条对照角色的可观察表演要求，检查演员的观察记录中是否有对应证据
+- 区分：有证据支持（supported）、部分支持（partial）、证据缺失（missing）、有相反证据（contradicted）
+- 演员自述"擅长"不等于"已展示能力"，只有实际表演观察才算支持证据
+- 特征强度不同不等于不匹配：克制的表演可能恰好适合内敛的角色
+
+【方案取舍说明】
+- stability_note：演员当前表现的稳定性（第一遍就完成 vs 需要指导）
+- adjustment_note：给调整指令后的改善情况（能执行指导 vs 无变化）
+- tradeoffs：与其他候选相比的取舍（谁当前更稳定，谁潜力更大）
 
 【重要规则】
-- 评分要客观，基于角色卡和演员画像的具体内容
-- 每个维度的评分都要有具体理由
-- 既要指出匹配的优势，也要指出风险和不足
-- 试镜建议要具体可操作，建议考察特定的场景或台词
+- 不要输出单一总分作为结论，分数只作为参考放在 reference_score
+- 材料不足时明确列出缺什么证据、建议什么补充试镜任务
+- 单人试镜无法判断"化学反应"，应建议安排对手戏验证
 - 输出必须是严格的 JSON 格式
 """
 
-MATCH_USER_PROMPT_TEMPLATE = """请对以下角色和演员进行匹配分析。
+PROPOSAL_USER_PROMPT_TEMPLATE = """请基于以下角色要求和演员观察记录，整理候选方案。
 
-【角色卡】
+【角色卡（含可观察表演要求）】
 ---
 {role_card_json}
 ---
 
-【演员画像】
+【演员观察记录】
 ---
 {actor_profile_json}
 ---
 
-【数值匹配参考（基于5维度量化特质的分值距离计算）】
-综合数值匹配分：{quantitative_score}/100
-各维度详情：
+【数值特征参考（仅反映特征强度差异，不代表演技或匹配度）】
 {quantitative_summary}
 
-【说明】
-- 以上数值匹配分是基于角色卡和演员画像的量化特质评分（外向性/情感张力/理性度/强势度/可信度）自动计算的
-- 请将数值匹配分作为参考，结合你对角色卡和演员画像的深度语义分析，给出最终的文本匹配分
-- 如果数值匹配分与你的语义判断有较大差异，请在匹配理由中说明原因
-- 你输出的 overall_score 将作为文本匹配分，最终综合分 = 数值分×30% + 文本分×70%
-
-请输出匹配分析 JSON，结构如下：
+请输出候选方案 JSON，结构如下：
 {{
-  "role_name": "角色名",
   "actor_name": "演员名",
-  "overall_score": 0,
-  "match_level": "高度匹配/较为匹配/一般匹配/不太匹配",
-  "dimension_scores": [
+  "category": "priority_audition / needs_more_audition / explicit_limit",
+  "supported_requirements": ["有观察证据支持的表演要求"],
+  "partial_requirements": ["部分支持的要求"],
+  "missing_evidence": ["缺失的关键证据"],
+  "explicit_limits": ["明确限制（档期/硬性要求等）"],
+  "tradeoffs": "与其他候选相比的取舍说明",
+  "stability_note": "当前表现稳定性",
+  "adjustment_note": "指导后改善情况",
+  "next_steps": ["下一步建议1", "下一步建议2"],
+  "reference_score": 0,
+  "evidence_comparisons": [
     {{
-      "dimension": "性格与气质匹配",
-      "score": 0,
-      "reason": "",
-      "risk": ""
-    }},
-    {{
-      "dimension": "动机与情感深度匹配",
-      "score": 0,
-      "reason": "",
-      "risk": ""
-    }},
-    {{
-      "dimension": "语言与台词匹配",
-      "score": 0,
-      "reason": "",
-      "risk": ""
-    }},
-    {{
-      "dimension": "行为与肢体匹配",
-      "score": 0,
-      "reason": "",
-      "risk": ""
-    }},
-    {{
-      "dimension": "表演风格匹配",
-      "score": 0,
-      "reason": "",
-      "risk": ""
-    }},
-    {{
-      "dimension": "潜力与可塑性",
-      "score": 0,
-      "reason": "",
-      "risk": ""
+      "requirement": "角色要求",
+      "must_have": true,
+      "actor_evidence": ["演员观察证据1", "演员观察证据2"],
+      "evidence_status": "supported / partial / missing / contradicted",
+      "notes": "说明"
     }}
-  ],
-  "match_reasons": ["理由1", "理由2"],
-  "risks": ["风险1", "风险2"],
-  "audition_suggestions": ["建议1", "建议2"],
-  "summary": "综合评价（2-3句话）"
+  ]
 }}
 
-输出纯 JSON，不要有任何额外文字。
+请确保：
+1. evidence_comparisons 逐条对照角色的 observable_requirements
+2. 分类依据要明确：多少关键要求有证据支持、缺什么
+3. next_steps 要具体（建议什么试镜任务、给什么调整指令、安排哪组对手戏）
+4. reference_score 仅作参考（0-100），不要让它成为主要结论
+5. 输出纯 JSON，不要有任何额外文字
 """
 
 
 # ============================================================
-# 匹配引擎
+# 匹配引擎（v0.5）
 # ============================================================
 
 class MatchingEngine:
-    """匹配引擎：角色卡 × 演员画像 → 选角报告"""
+    """候选方案引擎：角色卡 × 演员观察记录 → 候选方案报告"""
 
-    def __init__(
-        self,
-        llm_client: Optional[LLMClient] = None,
-        quantitative_weight: float = 0.3,
-        text_weight: float = 0.7,
-    ):
-        """
-        Args:
-            llm_client: LLM 客户端
-            quantitative_weight: 数值匹配权重（默认0.3）
-            text_weight: 文本匹配权重（默认0.7）
-        """
+    def __init__(self, llm_client: Optional[LLMClient] = None):
         self.llm = llm_client or LLMClient()
-        self.quantitative_weight = quantitative_weight
-        self.text_weight = text_weight
 
-    def _calculate_quantitative_match(
+    def _calculate_quantitative_reference(
         self,
         role_card: RoleCard,
         actor_profile: ActorProfile,
     ) -> tuple:
         """
-        计算数值匹配分（基于5维度量化特质的分值距离）
+        计算数值特征参考（降级为辅助参考，不再作为匹配中心）
 
         Returns:
-            (quantitative_score, quantitative_matches)
-            - quantitative_score: 0-100 分
-            - quantitative_matches: 各维度匹配详情列表
+            (reference_score, summary_lines)
         """
-        matches = []
+        summaries = []
         similarities = []
 
         for key, trait_info in QUANTITATIVE_TRAITS.items():
@@ -251,161 +204,337 @@ class MatchingEngine:
             role_score = role_trait.score if role_trait else None
             actor_score = actor_trait.score if actor_trait else None
 
-            dm = QuantitativeDimensionMatch(
-                dimension_key=key,
-                dimension_name=trait_info.get("name", key),
-                role_score=role_score,
-                actor_score=actor_score,
-            )
-
-            # 双方都有有效分值才计入
             if role_score is not None and actor_score is not None:
                 distance = abs(role_score - actor_score)
                 similarity = max(0.0, (10 - distance) / 10.0 * 100.0)
-                dm.distance = distance
-                dm.similarity = similarity
-                dm.included = True
                 similarities.append(similarity)
+                summaries.append(
+                    f"{trait_info['name']}：角色{role_score} vs 演员{actor_score}，"
+                    f"特征距离{distance}（注意：这是特征强度差异，不是演技差距）"
+                )
             else:
-                dm.included = False
+                missing = []
+                if role_score is None:
+                    missing.append("角色")
+                if actor_score is None:
+                    missing.append("演员")
+                summaries.append(
+                    f"{trait_info['name']}：无法判断（{'/'.join(missing)}证据不足）"
+                )
 
-            matches.append(dm)
+        reference_score = sum(similarities) / len(similarities) if similarities else 0.0
+        return reference_score, summaries
 
-        # 计算平均分（只计入双方都有分值的维度）
-        if similarities:
-            quantitative_score = sum(similarities) / len(similarities)
+    def _heuristic_proposal(
+        self,
+        role_card: RoleCard,
+        actor_profile: ActorProfile,
+        reference_score: float,
+    ) -> CastingProposal:
+        """
+        启发式候选方案（无 LLM 时基于证据覆盖情况分类）
+
+        逻辑：
+        - 统计角色可观察要求中，演员观察记录能支持多少
+        - 硬性要求全部支持 → priority_audition
+        - 有关键证据缺失 → needs_more_audition
+        """
+        proposal = CastingProposal(
+            actor_name=actor_profile.actor_name,
+            reference_score=round(reference_score, 1),
+        )
+
+        requirements = role_card.casting_guide.observable_requirements
+        if not requirements:
+            proposal.category = "needs_more_audition"
+            proposal.missing_evidence.append("角色卡缺少可观察表演要求，无法逐条比较")
+            proposal.next_steps.append("请先完善角色卡的可观察表演要求")
+            return proposal
+
+        # 收集演员所有观察证据文本
+        observation_texts = " ".join(
+            obs.observed_behavior + " " + obs.possible_interpretation
+            for obs in actor_profile.observations
+        )
+
+        supported_count = 0
+        must_have_missing = 0
+
+        for req in requirements:
+            comparison = EvidenceComparison(
+                requirement=req.requirement,
+                must_have=req.must_have,
+            )
+
+            # 优先用可观察信号词匹配（这些是精炼短语，如"停顿""回避目光""语速加快"）
+            signal_keywords = list(req.observable_signals)
+            # 补充从要求中提取的2-4字短语
+            signal_keywords.extend(self._extract_signal_phrases(req.requirement))
+
+            matched_evidence = []
+            contradicted_evidence = []
+            hit_keywords = set()
+            for obs in actor_profile.observations:
+                obs_text = obs.observed_behavior + obs.possible_interpretation
+
+                # 先检测相反证据（如要求"克制"但观察到"外放"）
+                contrast = self._detect_contradiction(
+                    req.requirement + " ".join(req.observable_signals),
+                    obs_text,
+                )
+                if contrast:
+                    contradicted_evidence.append(
+                        f"[{obs.timestamp}] {obs.observed_behavior}（出现相反信号：{contrast}）"
+                    )
+                    continue
+
+                for kw in signal_keywords:
+                    if len(kw) >= 2 and kw in obs_text:
+                        hit_keywords.add(kw)
+                        evidence_line = f"[{obs.timestamp}] {obs.observed_behavior}"
+                        if evidence_line not in matched_evidence:
+                            matched_evidence.append(evidence_line)
+                        break
+
+            if contradicted_evidence and matched_evidence:
+                comparison.actor_evidence = (contradicted_evidence[:2] + matched_evidence[:2])[:3]
+                comparison.evidence_status = "partial"
+                comparison.notes = "观察证据相互冲突，既有支持也有相反表现，需指导后复试澄清"
+                proposal.missing_evidence.append(
+                    f"{req.requirement}（证据冲突，需复试确认）"
+                )
+                if req.must_have:
+                    must_have_missing += 1
+            elif contradicted_evidence:
+                comparison.actor_evidence = contradicted_evidence[:3]
+                comparison.evidence_status = "contradicted"
+                comparison.notes = "观察到与要求相反的表现"
+                proposal.missing_evidence.append(
+                    f"{req.requirement}（现有表现相反，需重新试镜验证）"
+                )
+                if req.must_have:
+                    must_have_missing += 1
+            elif matched_evidence:
+                comparison.actor_evidence = matched_evidence[:3]
+                comparison.evidence_status = "supported"
+                comparison.notes = f"匹配信号：{ '、'.join(sorted(hit_keywords)) }"
+                proposal.supported_requirements.append(req.requirement)
+                supported_count += 1
+            else:
+                comparison.evidence_status = "missing"
+                comparison.notes = "现有观察记录中未找到对应证据"
+                proposal.missing_evidence.append(
+                    f"{req.requirement}（试镜检查：{req.audition_check}）"
+                )
+                if req.must_have:
+                    must_have_missing += 1
+
+            proposal.evidence_comparisons.append(comparison)
+
+        # 加入演员已有的待验证项
+        for vi in actor_profile.verification_items:
+            if vi.suggested_task and vi.suggested_task not in proposal.next_steps:
+                proposal.next_steps.append(f"补充验证「{vi.item}」：{vi.suggested_task}")
+
+        # 分类逻辑
+        total = len(requirements)
+        contradicted_count = sum(
+            1 for c in proposal.evidence_comparisons if c.evidence_status == "contradicted"
+        )
+
+        must_contra = sum(
+            1 for c in proposal.evidence_comparisons
+            if c.evidence_status == "contradicted" and c.must_have
+        )
+        nonmust_contra = contradicted_count - must_contra
+
+        if must_contra > 0:
+            proposal.category = "needs_more_audition"
+            proposal.tradeoffs = (
+                f"有{must_contra}项必须满足的要求观察到相反表现，可能是理解偏差，"
+                "建议给出明确调整指令后复试，确认演员能否调整表达方式"
+            )
+            proposal.adjustment_note = "重点检验演员能否在指导后改变表达方式"
+            proposal.stability_note = (
+                f"{supported_count}/{total}项要求有证据支持，且{must_contra}项硬性要求表现相反"
+            )
+            proposal.next_steps.insert(0, "针对相反表现项给出调整指令，进行指导后复试")
+        elif must_have_missing == 0 and supported_count >= total * 0.6:
+            proposal.category = "priority_audition"
+            proposal.stability_note = "多数必须满足的表演要求有直接观察证据支持"
+            if nonmust_contra > 0:
+                proposal.tradeoffs = (
+                    f"另有{nonmust_contra}项可排练改善的要求当前表现相反，"
+                    "不影响进入试演，但建议在排练中重点引导"
+                )
+            proposal.next_steps.insert(0, "可安排对手戏验证与其他角色的化学反应")
         else:
-            quantitative_score = 0.0  # 没有任何有效维度时为0，完全依赖文本匹配
+            proposal.category = "needs_more_audition"
+            proposal.stability_note = f"仅{supported_count}/{total}项要求有证据支持，部分必须项尚待确认"
+            proposal.next_steps.insert(0, "需补充试镜以验证缺失的表演要求")
 
-        return quantitative_score, matches
+        # 指导后改善情况
+        if actor_profile.adjustment_responses:
+            effective = sum(
+                1 for a in actor_profile.adjustment_responses
+                if "有效" in a.change_quality or "调整" in a.change_quality
+            )
+            proposal.adjustment_note = (
+                f"复试中{effective}/{len(actor_profile.adjustment_responses)}次调整有效"
+            )
+
+        # 分析状态警告
+        if actor_profile.analysis_status == "partial":
+            proposal.explicit_limits.append("分析不完整：部分模态处理失败")
+        elif actor_profile.analysis_status == "failed":
+            proposal.category = "needs_more_audition"
+            proposal.explicit_limits.append("分析失败，当前画像不可用，需要重新分析")
+
+        return proposal
+
+    @staticmethod
+    def _extract_signal_phrases(text: str) -> List[str]:
+        """
+        从要求文本提取2-3字核心信号短语（滑动窗口），过滤通用停用词。
+        用于在观察记录中做鲁棒的中文关键词匹配。
+        """
+        import re
+        # 通用词停用表：这些词出现在要求里不构成可观察信号
+        stopwords = {
+            "通过", "表达", "内心", "需要", "演员", "观众", "角色", "理解",
+            "情绪", "情感", "表演", "要求", "能够", "可以", "以及", "或者",
+            "时候", "场景", "方式", "进行", "具有", "展现", "呈现", "表现",
+            "感觉", "状态", "过程", "一个", "这个", "那个", "他们", "我们",
+            "自己", "对方", "人物", "戏剧", "演出", "的话", "让其", "使其",
+        }
+        segments = re.findall(r"[一-鿿]+|[a-zA-Z]+", text)
+        phrases = set()
+        for seg in segments:
+            for n in (2, 3):
+                for i in range(len(seg) - n + 1):
+                    phrase = seg[i:i + n]
+                    # 过滤含停用词或本身是停用词的片段
+                    if phrase in stopwords:
+                        continue
+                    if any(sw in phrase for sw in ("通过", "表达", "需要", "演员", "观众")):
+                        continue
+                    phrases.add(phrase)
+        return list(phrases)
+
+    # 反义信号词对：观察中出现后者时，与前者的要求构成相反证据
+    CONTRAST_SIGNALS = {
+        "克制": ["外放", "夸张", "丰富", "激烈", "张扬", "大幅度", "砸", "咆哮"],
+        "内敛": ["外放", "张扬", "热情", "活跃"],
+        "停顿": ["连贯", "不停", "抢话", "抢词", "急促", "没有停顿", "无停顿"],
+        "犹豫": ["果断", "坚定", "干脆", "毫不犹豫"],
+        "回避目光": ["直视", "注视", "紧盯", "凝视"],
+        "直视": ["回避", "躲闪", "避开", "下垂", "低垂", "垂下", "移开", "飘开"],
+        "安静": ["喧闹", "吵闹", "活跃"],
+        "缓慢": ["急促", "飞快", "匆忙"],
+        "低沉": ["高亢", "尖锐", "嘹亮"],
+        "平稳": ["加快", "失控", "急促", "提高", "飘忽", "不稳", "颤抖", "崩溃"],
+        "平静": ["失控", "激动", "崩溃", "爆发", "尖叫"],
+    }
+
+    def _detect_contradiction(self, requirement_text: str, obs_text: str) -> Optional[str]:
+        """检测观察文本是否包含与要求相反的信号，返回反义标记（无则 None）。
+
+        额外处理否定语境：如"没有失控""未回避"不应算作相反证据；
+        但反义信号本身以"不"开头的（如"不停"）是固定反义，照常命中。
+        """
+        negatives_prefix = ("没有", "没", "未", "非", "无", "并非")
+        for positive, negatives in self.CONTRAST_SIGNALS.items():
+            if positive not in requirement_text:
+                continue
+            for neg in negatives:
+                search_from = 0
+                while True:
+                    idx = obs_text.find(neg, search_from)
+                    if idx == -1:
+                        break
+                    prefix = obs_text[max(0, idx - 2):idx]
+                    negated = any(mark in prefix for mark in negatives_prefix)
+                    if not neg.startswith("不") and obs_text[max(0, idx - 1):idx] == "不":
+                        negated = True
+                    if not negated:
+                        return neg
+                    search_from = idx + len(neg)
+        return None
 
     def match_one(
         self,
         role_card: RoleCard,
         actor_profile: ActorProfile,
         max_retries: int = 2,
-    ) -> Optional[MatchResult]:
-        """
-        匹配单个角色和演员
-
-        Args:
-            role_card: 角色卡
-            actor_profile: 演员画像
-            max_retries: 最大重试次数
-
-        Returns:
-            匹配结果
-        """
-        # Step 1: 计算数值匹配分（基于5维度量化特质的分值距离）
-        quantitative_score, quant_matches = self._calculate_quantitative_match(
+    ) -> Optional[CastingProposal]:
+        """单个角色×演员的候选方案"""
+        reference_score, quant_summaries = self._calculate_quantitative_reference(
             role_card, actor_profile
         )
 
-        # 构建数值匹配参考摘要，传给 LLM 作为辅助参考
-        quant_summary_parts = []
-        for qm in quant_matches:
-            if qm.included:
-                quant_summary_parts.append(
-                    f"{qm.dimension_name}：角色{qm.role_score}分 vs 演员{qm.actor_score}分，"
-                    f"距离{qm.distance}，相似度{qm.similarity:.0f}%"
-                )
-            else:
-                missing = []
-                if qm.role_score is None:
-                    missing.append("角色")
-                if qm.actor_score is None:
-                    missing.append("演员")
-                quant_summary_parts.append(
-                    f"{qm.dimension_name}：无法判断（{'/'.join(missing)}分值缺失）"
-                )
-        quant_summary = "\n".join(quant_summary_parts) if quant_summary_parts else "无量化特质数据"
+        # Mock/演示模式或分析失败时，直接走启发式证据比较（不依赖 LLM 返回格式）
+        if self.llm.is_mock_mode or actor_profile.analysis_status == "failed":
+            return self._heuristic_proposal(role_card, actor_profile, reference_score)
 
-        user_prompt = MATCH_USER_PROMPT_TEMPLATE.format(
+        # 尝试 LLM 分析
+        user_prompt = PROPOSAL_USER_PROMPT_TEMPLATE.format(
             role_card_json=role_card.to_json(),
             actor_profile_json=actor_profile.to_json(),
-            quantitative_summary=quant_summary,
-            quantitative_score=f"{quantitative_score:.1f}",
+            quantitative_summary="\n".join(quant_summaries),
         )
 
         for attempt in range(max_retries + 1):
-            if attempt > 0:
-                print(f"    [重试 {attempt}/{max_retries}]...")
-
-            result = self.llm.chat_json(MATCH_SYSTEM_PROMPT, user_prompt)
+            result = self.llm.chat_json(PROPOSAL_SYSTEM_PROMPT, user_prompt)
 
             if "_parse_error" in result:
                 if attempt < max_retries:
                     continue
-                return None
+                # LLM 失败，降级为启发式
+                return self._heuristic_proposal(role_card, actor_profile, reference_score)
 
             try:
-                text_score = float(result.get("overall_score", 0))
+                comparisons = []
+                for ec in result.get("evidence_comparisons", []):
+                    if isinstance(ec, dict):
+                        comparisons.append(EvidenceComparison(
+                            requirement=ec.get("requirement", ""),
+                            must_have=ec.get("must_have", False),
+                            actor_evidence=ec.get("actor_evidence", []) if isinstance(ec.get("actor_evidence"), list) else [],
+                            evidence_status=ec.get("evidence_status", "missing"),
+                            notes=ec.get("notes", ""),
+                        ))
 
-                # 融合数值分和文本分
-                # 如果没有任何有效量化维度，数值权重降为0，完全依赖文本分
-                effective_quant_weight = self.quantitative_weight if any(
-                    qm.included for qm in quant_matches
-                ) else 0.0
-                effective_text_weight = 1.0 - effective_quant_weight
-
-                overall_score = (
-                    quantitative_score * effective_quant_weight
-                    + text_score * effective_text_weight
-                )
-
-                match = MatchResult(
-                    role_name=result.get("role_name", role_card.role_name),
+                return CastingProposal(
                     actor_name=result.get("actor_name", actor_profile.actor_name),
-                    overall_score=round(overall_score, 1),
-                    match_level=result.get("match_level", ""),
-                    dimension_scores=[
-                        DimensionScore(
-                            dimension=ds.get("dimension", ""),
-                            score=float(ds.get("score", 0)),
-                            reason=ds.get("reason", ""),
-                            risk=ds.get("risk", ""),
-                        )
-                        for ds in result.get("dimension_scores", [])
-                        if isinstance(ds, dict)
-                    ],
-                    match_reasons=result.get("match_reasons", []),
-                    risks=result.get("risks", []),
-                    audition_suggestions=result.get("audition_suggestions", []),
-                    summary=result.get("summary", ""),
-                    quantitative_score=round(quantitative_score, 1),
-                    text_score=round(text_score, 1),
-                    quantitative_matches=quant_matches,
-                    quantitative_weight=effective_quant_weight,
-                    text_weight=effective_text_weight,
+                    category=result.get("category", "needs_more_audition"),
+                    supported_requirements=result.get("supported_requirements", []) if isinstance(result.get("supported_requirements"), list) else [],
+                    partial_requirements=result.get("partial_requirements", []) if isinstance(result.get("partial_requirements"), list) else [],
+                    missing_evidence=result.get("missing_evidence", []) if isinstance(result.get("missing_evidence"), list) else [],
+                    explicit_limits=result.get("explicit_limits", []) if isinstance(result.get("explicit_limits"), list) else [],
+                    tradeoffs=result.get("tradeoffs", ""),
+                    stability_note=result.get("stability_note", ""),
+                    adjustment_note=result.get("adjustment_note", ""),
+                    next_steps=result.get("next_steps", []) if isinstance(result.get("next_steps"), list) else [],
+                    reference_score=float(result.get("reference_score", reference_score)),
+                    evidence_comparisons=comparisons,
                 )
-                return match
             except Exception as e:
-                print(f"    匹配结果解析失败：{e}")
+                print(f"    候选方案解析失败：{e}")
                 if attempt < max_retries:
                     continue
-                return None
+                return self._heuristic_proposal(role_card, actor_profile, reference_score)
 
-        return None
+        return self._heuristic_proposal(role_card, actor_profile, reference_score)
 
     def match_all(
         self,
         role_cards: List[RoleCard],
         actor_profiles: List[ActorProfile],
     ) -> CastingReport:
-        """
-        匹配所有角色和演员（笛卡尔积）
-
-        Args:
-            role_cards: 角色卡列表
-            actor_profiles: 演员画像列表
-
-        Returns:
-            选角报告
-        """
+        """为所有角色生成候选方案"""
         print(f"\n{'='*60}")
-        print(f"  CastingNuwa · 匹配引擎")
+        print(f"  CastingNuwa · 候选方案整理")
         print(f"  角色数：{len(role_cards)} | 演员数：{len(actor_profiles)}")
-        print(f"  匹配组合：{len(role_cards) * len(actor_profiles)}")
         print(f"{'='*60}\n")
 
         report = CastingReport(
@@ -415,106 +544,127 @@ class MatchingEngine:
 
         for i, role in enumerate(role_cards):
             print(f"  [{i+1}/{len(role_cards)}] 角色：{role.role_name}")
-
-            best_score = -1
-            best_actor = ""
+            role_result = RoleCastingResult(role_name=role.role_name)
 
             for j, actor in enumerate(actor_profiles):
-                print(f"    匹配演员 {j+1}/{len(actor_profiles)}：{actor.actor_name}...", end=" ")
-
-                match = self.match_one(role, actor)
-                if match:
-                    report.results.append(match)
-                    print(f"✅ {match.overall_score:.0f}分 ({match.match_level})")
-
-                    if match.overall_score > best_score:
-                        best_score = match.overall_score
-                        best_actor = actor.actor_name
+                print(f"    分析演员 {j+1}/{len(actor_profiles)}：{actor.actor_name}...", end=" ")
+                proposal = self.match_one(role, actor)
+                if proposal:
+                    role_result.proposals.append(proposal)
+                    category_label = {
+                        "priority_audition": "优先试演",
+                        "needs_more_audition": "补充试镜",
+                        "explicit_limit": "明确限制",
+                    }.get(proposal.category, proposal.category)
+                    print(f"→ {category_label}（参考分{proposal.reference_score:.0f}）")
                 else:
                     print("❌ 失败")
 
-            if best_actor:
-                report.recommendations[role.role_name] = best_actor
-                print(f"    → 推荐：{best_actor} ({best_score:.0f}分)")
+            # 排序：优先试演在前
+            category_order = {"priority_audition": 0, "needs_more_audition": 1, "explicit_limit": 2}
+            role_result.proposals.sort(
+                key=lambda p: category_order.get(p.category, 3)
+            )
+
+            # 化学反应检查建议
+            priority = [p for p in role_result.proposals if p.category == "priority_audition"]
+            if len(priority) >= 2:
+                role_result.chemistry_checks.append(
+                    f"建议安排 {priority[0].actor_name} 与 {priority[1].actor_name} "
+                    f"分别与对手戏演员试演，验证化学反应"
+                )
+
+            # 试镜任务摘要
+            if role.casting_guide.audition_focus:
+                role_result.audition_task_summary = role.casting_guide.audition_focus
+
+            report.results.append(role_result)
             print()
 
-        print(f"  匹配完成：共 {len(report.results)} 个匹配结果\n")
+        # 全局兼角检查
+        if len(role_cards) > 1 and len(actor_profiles) < len(role_cards):
+            report.global_notes.append(
+                "演员数少于角色数，可能需要兼角安排，请检查兼角可行性和演员档期"
+            )
+
+        print(f"  候选方案整理完成\n")
         return report
 
     @staticmethod
     def save_report(report: CastingReport, output_path: str) -> str:
         """保存选角报告到 JSON 文件"""
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-
         data = {
-            "project": "CastingNuwa · 选角女娲",
-            "description": "AI 选角匹配报告",
+            "project": "CastingNuwa · 选角女娲 v0.5",
+            "description": "候选方案与证据比较报告（观察记录体系，非单一评分）",
             "role_count": report.role_count,
             "actor_count": report.actor_count,
-            "recommendations": report.recommendations,
+            "global_notes": report.global_notes,
             "results": [r.to_dict() for r in report.results],
         }
-
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-
-        print(f"  💾 选角报告已保存：{output_path}")
+        print(f"  选角报告已保存：{output_path}")
         return output_path
 
     @staticmethod
     def print_report(report: CastingReport) -> None:
-        """打印选角报告的人类可读摘要"""
+        """打印候选方案报告"""
         print(f"\n{'='*60}")
-        print(f"  CastingNuwa · 选角报告")
-        print(f"  角色：{report.role_count} | 演员：{report.actor_count} | 匹配：{len(report.results)}")
+        print(f"  CastingNuwa · 候选方案报告")
+        print(f"  角色：{report.role_count} | 演员：{report.actor_count}")
         print(f"{'='*60}\n")
 
-        # 推荐汇总
-        print(f"【推荐汇总】")
-        for role_name, actor_name in report.recommendations.items():
-            best = report.get_best_actor_for_role(role_name)
-            if best:
-                print(f"  {role_name} → {actor_name}（{best.overall_score:.0f}分，{best.match_level}）")
-        print()
-
-        # 详细结果
-        for role_name in report.recommendations.keys():
-            role_results = sorted(
-                [r for r in report.results if r.role_name == role_name],
-                key=lambda x: x.overall_score,
-                reverse=True,
-            )
-
+        for role_result in report.results:
             print(f"{'─'*60}")
-            print(f"  角色：{role_name}")
+            print(f"  角色：{role_result.role_name}")
             print(f"{'─'*60}")
 
-            for r in role_results:
-                print(f"\n  演员：{r.actor_name} | 匹配度：{r.overall_score:.0f}分 | {r.match_level}")
-                print(f"  综合评价：{r.summary}")
+            for p in role_result.proposals:
+                category_label = {
+                    "priority_audition": "【值得优先试演】",
+                    "needs_more_audition": "【需要补充试镜】",
+                    "explicit_limit": "【存在明确限制】",
+                }.get(p.category, f"【{p.category}】")
 
-                if r.match_reasons:
-                    print(f"  ✓ 匹配优势：")
-                    for reason in r.match_reasons:
-                        print(f"    - {reason}")
+                print(f"\n  {p.actor_name} {category_label}（参考分：{p.reference_score:.0f}）")
 
-                if r.risks:
-                    print(f"  ⚠ 风险提示：")
-                    for risk in r.risks:
-                        print(f"    - {risk}")
+                if p.supported_requirements:
+                    print(f"  ✓ 有证据支持：")
+                    for req in p.supported_requirements:
+                        print(f"    - {req}")
 
-                if r.audition_suggestions:
-                    print(f"  🎬 试镜建议：")
-                    for sug in r.audition_suggestions:
-                        print(f"    - {sug}")
+                if p.missing_evidence:
+                    print(f"  ? 缺失证据：")
+                    for m in p.missing_evidence:
+                        print(f"    - {m}")
 
-                # 分维度评分
-                if r.dimension_scores:
-                    print(f"  📊 分维度评分：")
-                    for ds in r.dimension_scores:
-                        bar = "█" * int(ds.score / 10) + "░" * (10 - int(ds.score / 10))
-                        print(f"    {ds.dimension:<20} {bar} {ds.score:.0f}分")
+                if p.explicit_limits:
+                    print(f"  ✗ 明确限制：")
+                    for limit in p.explicit_limits:
+                        print(f"    - {limit}")
 
+                if p.stability_note:
+                    print(f"  稳定性：{p.stability_note}")
+                if p.adjustment_note:
+                    print(f"  指导后：{p.adjustment_note}")
+                if p.tradeoffs:
+                    print(f"  方案取舍：{p.tradeoffs}")
+
+                if p.next_steps:
+                    print(f"  → 下一步：")
+                    for step in p.next_steps:
+                        print(f"    - {step}")
+
+            if role_result.chemistry_checks:
+                print(f"\n  化学反应验证：")
+                for check in role_result.chemistry_checks:
+                    print(f"    - {check}")
             print()
+
+        if report.global_notes:
+            print(f"【全局说明】")
+            for note in report.global_notes:
+                print(f"  - {note}")
 
         print(f"{'='*60}\n")

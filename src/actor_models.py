@@ -2,15 +2,11 @@
 CastingNuwa · 选角女娲
 演员画像数据模型
 
-演员画像是"演员画像器"的输出，包含 7 个维度 + 量化特质评分：
-1. basic_info       - 基本信息
-2. vocal_traits     - 声线特质
-3. facial_expressiveness - 面部表现力
-4. physical_expressiveness - 肢体表现力
-5. emotional_range  - 情感表达范围
-6. temperament      - 气质类型
-7. acting_style     - 表演风格与潜力
-8. quantitative_traits - 量化特质评分（与角色卡共用5维度，便于数值匹配）
+v0.5 重构：从"综合评分"改为"观察记录"体系
+- 输出观察证据（时间戳+可观察行为），而非笼统评分
+- 区分直接观察、推断和无法判断
+- 材料不足生成"待验证项"，不硬给中等分
+- 自我介绍/过往经历/实际表演证据分别存储
 """
 
 from dataclasses import dataclass, field, asdict
@@ -18,6 +14,71 @@ from typing import List, Optional, Dict
 import json
 
 from .models import TraitScore, QUANTITATIVE_TRAITS
+
+
+# ============================================================
+# 观察记录体系（v0.5 新增）
+# ============================================================
+
+@dataclass
+class ObservationRecord:
+    """
+    单条观察记录
+
+    结构：发生了什么 → 可能意味着什么 → 依据是否充分 → 下一轮怎么验证
+    这是替代"综合打分"的核心输出格式。
+    """
+    timestamp: str = ""              # 时间段（如 "0:45-0:52"）
+    observed_behavior: str = ""      # 可观察的行为（停顿/动作/语气变化，只描述事实）
+    possible_interpretation: str = ""  # 可能意味着什么（结合角色要求提出解释，保留其他解释）
+    alternative_interpretations: List[str] = field(default_factory=list)  # 其他可能解释
+    evidence_type: str = "直接观察"   # 直接观察 / 推断 / 无法判断
+    confidence: str = "中"           # 高 / 中 / 低 / 无法判断
+    verification_suggestion: str = ""  # 下一轮怎么验证（建议换什么指令、观察什么变化）
+    related_requirement: str = ""    # 对应的角色要求（如"需要通过停顿表达犹豫"）
+    source: str = "video"            # 证据来源：video / audio / text / self_report
+
+
+@dataclass
+class VerificationItem:
+    """
+    待验证项
+
+    材料不足时生成，而不是给中等分。
+    回答：缺什么证据、需要补录什么、怎样再试一次。
+    """
+    item: str = ""                   # 待验证的能力或特质
+    why_needed: str = ""             # 为什么需要验证（对应哪个角色要求）
+    current_evidence: str = ""       # 目前有什么证据（可能为空或很弱）
+    suggested_task: str = ""         # 建议的补充试镜任务
+    priority: str = "中"             # 高 / 中 / 低
+
+
+@dataclass
+class EvidenceCollection:
+    """
+    证据集合（按来源分离存储）
+
+    避免把"说自己擅长"当成"已经展示了能力"。
+    """
+    performance_evidence: List[ObservationRecord] = field(default_factory=list)  # 实际表演证据
+    self_reports: List[str] = field(default_factory=list)  # 自我介绍中的自述（未经表演验证）
+    past_experience: List[str] = field(default_factory=list)  # 过往经历描述
+    material_gaps: List[str] = field(default_factory=list)  # 材料缺失说明
+
+
+@dataclass
+class AdjustmentResponse:
+    """
+    指导后复试表现
+
+    两轮试镜的核心：区分"第一次碰巧合适"和"能理解并执行指导"。
+    """
+    instruction_given: str = ""      # 给出的调整指令
+    observed_change: str = ""        # 观察到的变化
+    change_quality: str = ""         # 变化是否服务于任务（有效调整/表面调整/无变化/方向错误）
+    interpretation: str = ""         # 这说明什么（理解能力/可塑性/执行能力）
+    confidence: str = "中"           # 高 / 中 / 低 / 无法判断
 
 
 @dataclass
@@ -106,9 +167,9 @@ class ActorProfile:
     """
     演员画像 —— 演员画像器的最终输出
 
-    对演员的多维度综合分析，用于与角色卡做匹配。
-    当前版本主要基于文本输入（自我介绍+试镜转写）分析，
-    视频/音频分析为可扩展接口。
+    v0.5：从"综合评分"改为"观察记录"体系。
+    旧的7维度描述保留作为参考，但核心输出是 observations（观察记录）
+    和 verification_items（待验证项），而非一个总分。
     """
     actor_name: str = ""
     basic_info: ActorBasicInfo = field(default_factory=ActorBasicInfo)
@@ -118,10 +179,18 @@ class ActorProfile:
     emotional_range: EmotionalRange = field(default_factory=EmotionalRange)
     temperament: Temperament = field(default_factory=Temperament)
     acting_style: ActingStyle = field(default_factory=ActingStyle)
-    quantitative_traits: Dict[str, TraitScore] = field(default_factory=dict)  # 量化特质评分（与角色卡共用维度）
+    quantitative_traits: Dict[str, TraitScore] = field(default_factory=dict)  # 特征强度参考（非演技评分）
+
+    # v0.5 观察记录体系
+    observations: List[ObservationRecord] = field(default_factory=list)  # 观察记录列表
+    verification_items: List[VerificationItem] = field(default_factory=list)  # 待验证项
+    evidence: EvidenceCollection = field(default_factory=EvidenceCollection)  # 按来源分离的证据
+    adjustment_responses: List[AdjustmentResponse] = field(default_factory=list)  # 指导后复试表现
 
     # 分析来源标记
     analysis_sources: List[str] = field(default_factory=list)  # 如 ["text", "audio", "video"]
+    analysis_status: str = "complete"  # complete / partial / failed / demo（区分成功、部分成功、失败、演示）
+    analysis_warnings: List[str] = field(default_factory=list)  # 分析过程中的警告（如"视觉分析跳过"）
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -232,6 +301,67 @@ class ActorProfile:
                 for key, val in qt.items()
                 if isinstance(val, dict)
             }
+
+        # v0.5 观察记录
+        obs = data.get("observations", [])
+        if isinstance(obs, list):
+            profile.observations = [
+                ObservationRecord(
+                    timestamp=o.get("timestamp", ""),
+                    observed_behavior=o.get("observed_behavior", ""),
+                    possible_interpretation=o.get("possible_interpretation", ""),
+                    alternative_interpretations=o.get("alternative_interpretations", []) if isinstance(o.get("alternative_interpretations"), list) else [],
+                    evidence_type=o.get("evidence_type", "直接观察"),
+                    confidence=o.get("confidence", "中"),
+                    verification_suggestion=o.get("verification_suggestion", ""),
+                    related_requirement=o.get("related_requirement", ""),
+                    source=o.get("source", "video"),
+                )
+                for o in obs if isinstance(o, dict)
+            ]
+
+        # 待验证项
+        vis = data.get("verification_items", [])
+        if isinstance(vis, list):
+            profile.verification_items = [
+                VerificationItem(
+                    item=v.get("item", ""),
+                    why_needed=v.get("why_needed", ""),
+                    current_evidence=v.get("current_evidence", ""),
+                    suggested_task=v.get("suggested_task", ""),
+                    priority=v.get("priority", "中"),
+                )
+                for v in vis if isinstance(v, dict)
+            ]
+
+        # 证据集合
+        ev = data.get("evidence", {})
+        if isinstance(ev, dict):
+            profile.evidence = EvidenceCollection(
+                performance_evidence=profile.observations,  # 表演证据就是观察记录
+                self_reports=ev.get("self_reports", []) if isinstance(ev.get("self_reports"), list) else [],
+                past_experience=ev.get("past_experience", []) if isinstance(ev.get("past_experience"), list) else [],
+                material_gaps=ev.get("material_gaps", []) if isinstance(ev.get("material_gaps"), list) else [],
+            )
+
+        # 复试表现
+        ars = data.get("adjustment_responses", [])
+        if isinstance(ars, list):
+            profile.adjustment_responses = [
+                AdjustmentResponse(
+                    instruction_given=a.get("instruction_given", ""),
+                    observed_change=a.get("observed_change", ""),
+                    change_quality=a.get("change_quality", ""),
+                    interpretation=a.get("interpretation", ""),
+                    confidence=a.get("confidence", "中"),
+                )
+                for a in ars if isinstance(a, dict)
+            ]
+
+        # 分析状态
+        profile.analysis_status = data.get("analysis_status", "complete")
+        aw = data.get("analysis_warnings", [])
+        profile.analysis_warnings = aw if isinstance(aw, list) else []
 
         return profile
 
