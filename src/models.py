@@ -63,18 +63,41 @@ class TraitScore:
     def from_dict(cls, data: dict) -> "TraitScore":
         if not isinstance(data, dict):
             return cls()
+
+        raw_evidence = data.get("evidence", [])
+        evidence = [str(e) for e in raw_evidence if e] if isinstance(raw_evidence, list) else []
+
+        try:
+            declared = int(data.get("evidence_count", 0) or 0)
+        except (ValueError, TypeError):
+            declared = 0
+        evidence_count = max(declared, len(evidence))
+
         score = data.get("score")
-        # 容错：字符串数字转 int，null/None 保持 None
         if score is not None and not isinstance(score, int):
             try:
-                score = int(score)
+                score = int(float(score))
             except (ValueError, TypeError):
                 score = None
+        # 分值必须落在 0-10，否则视为无效
+        if score is not None and not (0 <= score <= 10):
+            score = None
+
+        confidence = data.get("confidence") or "无法判断"
+
+        # 强制证据规则：有效证据少于 2 条，一律不得给分
+        if evidence_count < 2:
+            score = None
+            confidence = "无法判断"
+        # 置信度为“无法判断”却给了分，以证据规则为准，清空分值
+        if confidence == "无法判断":
+            score = None
+
         return cls(
             score=score,
-            evidence_count=data.get("evidence_count", 0) or 0,
-            evidence=data.get("evidence", []) if isinstance(data.get("evidence"), list) else [],
-            confidence=data.get("confidence", "无法判断") or "无法判断",
+            evidence_count=evidence_count,
+            evidence=evidence,
+            confidence=confidence,
         )
 
 
@@ -183,6 +206,29 @@ class ProductionSettings:
     schedule_constraints: str = ""   # 演员档期和排练时间约束
     confirmed: bool = False          # 负责人是否已确认
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ProductionSettings":
+        if not isinstance(data, dict):
+            return cls()
+
+        def _list(key):
+            val = data.get(key, [])
+            return [str(x) for x in val if x] if isinstance(val, list) else []
+
+        return cls(
+            performance_style=data.get("performance_style", "") or "",
+            role_interpretation=data.get("role_interpretation", "") or "",
+            must_have_requirements=_list("must_have_requirements"),
+            can_rehearse=_list("can_rehearse"),
+            allow_cross_gender=bool(data.get("allow_cross_gender", False)),
+            allow_double_casting=bool(data.get("allow_double_casting", False)),
+            schedule_constraints=data.get("schedule_constraints", "") or "",
+            confirmed=bool(data.get("confirmed", False)),
+        )
+
 
 @dataclass
 class AuditionTask:
@@ -200,6 +246,28 @@ class AuditionTask:
     retest_task: str = ""            # 复试任务（检验调整效果）
     retest_focus: str = ""           # 复试时重点观察什么变化
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "AuditionTask":
+        if not isinstance(data, dict):
+            return cls()
+        raw_focus = data.get("observation_focus", [])
+        focus = [
+            ObservationFocus.from_dict(item)
+            for item in raw_focus if isinstance(item, dict)
+        ] if isinstance(raw_focus, list) else []
+        return cls(
+            role_name=data.get("role_name", "") or "",
+            scene_description=data.get("scene_description", "") or "",
+            script_excerpt=data.get("script_excerpt", "") or "",
+            observation_focus=focus,
+            adjustment_instruction=data.get("adjustment_instruction", "") or "",
+            retest_task=data.get("retest_task", "") or "",
+            retest_focus=data.get("retest_focus", "") or "",
+        )
+
 
 @dataclass
 class ObservationFocus:
@@ -208,6 +276,25 @@ class ObservationFocus:
     explanation: str = ""            # 容易理解的说明
     positive_signals: List[str] = field(default_factory=list)  # 正面信号
     negative_signals: List[str] = field(default_factory=list)  # 负面信号
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ObservationFocus":
+        if not isinstance(data, dict):
+            return cls()
+
+        def _list(key):
+            val = data.get(key, [])
+            return [str(x) for x in val if x] if isinstance(val, list) else []
+
+        return cls(
+            focus=data.get("focus", "") or "",
+            explanation=data.get("explanation", "") or "",
+            positive_signals=_list("positive_signals"),
+            negative_signals=_list("negative_signals"),
+        )
 
 
 @dataclass

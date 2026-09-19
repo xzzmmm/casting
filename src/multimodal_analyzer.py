@@ -229,6 +229,7 @@ class MultimodalAnalyzer:
 
         lines = [
             f"分析帧数：{vision_result.frames_extracted}",
+            f"采样覆盖：{getattr(vision_result, 'sampling_note', '') or '未记录'}",
             f"",
             f"【面部表情】",
             f"  人脸检测率：{f.face_detected_ratio:.1%}",

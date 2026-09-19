@@ -192,6 +192,9 @@ class ActorProfile:
     analysis_status: str = "complete"  # complete / partial / failed / demo（区分成功、部分成功、失败、演示）
     analysis_warnings: List[str] = field(default_factory=list)  # 分析过程中的警告（如"视觉分析跳过"）
 
+    # 档期与可用性（演员自述，供兼角/档期冲突检查；不参与演技判断）
+    schedule_info: str = ""           # 可排练/可演出时间，如"周三晚、周末全天；周四有课"
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -362,6 +365,9 @@ class ActorProfile:
         profile.analysis_status = data.get("analysis_status", "complete")
         aw = data.get("analysis_warnings", [])
         profile.analysis_warnings = aw if isinstance(aw, list) else []
+
+        # 档期信息
+        profile.schedule_info = data.get("schedule_info", "") or ""
 
         return profile
 

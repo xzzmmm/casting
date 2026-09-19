@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Dict, Any
 
-from .models import RoleCard, QUANTITATIVE_TRAITS, ObservableRequirement
+from .models import RoleCard, QUANTITATIVE_TRAITS, ObservableRequirement, ProductionSettings
 from .actor_models import ActorProfile, ObservationRecord, VerificationItem
 from .llm_client import LLMClient
 
@@ -64,6 +64,13 @@ class RoleCastingResult:
     proposals: List[CastingProposal] = field(default_factory=list)
     chemistry_checks: List[str] = field(default_factory=list)  # 需要安排对手戏验证的组合
     audition_task_summary: str = ""    # 建议的试镜任务摘要
+    # 人工确认（最终选角决定 + 理由 + 时间）
+    confirmed_actor_name: str = ""
+    confirmation_reason: str = ""
+    confirmed_at: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass
@@ -92,6 +99,77 @@ class CastingReport:
             if r.role_name == role_name:
                 return r
         return None
+
+    def confirm_actor(self, role_name: str, actor_name: str, reason: str) -> bool:
+        """人工确认某角色的最终人选并记录理由。演员名不在候选中则拒绝。"""
+        from datetime import datetime
+        result = self.get_result_for_role(role_name)
+        if result is None:
+            return False
+        valid_names = [p.actor_name for p in result.proposals]
+        if actor_name and actor_name not in valid_names:
+            return False
+        result.confirmed_actor_name = actor_name
+        result.confirmation_reason = reason
+        result.confirmed_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+        return True
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CastingReport":
+        """从项目存档恢复选角报告（递归重建嵌套数据类）。"""
+        if not isinstance(data, dict):
+            return cls()
+
+        def _str_list(value):
+            return [str(x) for x in value if x] if isinstance(value, list) else []
+
+        report = cls(
+            role_count=int(data.get("role_count", 0) or 0),
+            actor_count=int(data.get("actor_count", 0) or 0),
+            global_notes=_str_list(data.get("global_notes")),
+        )
+        for rd in data.get("results", []) or []:
+            if not isinstance(rd, dict):
+                continue
+            proposals = []
+            for pd in rd.get("proposals", []) or []:
+                if not isinstance(pd, dict):
+                    continue
+                comparisons = []
+                for ec in pd.get("evidence_comparisons", []) or []:
+                    if not isinstance(ec, dict):
+                        continue
+                    comparisons.append(EvidenceComparison(
+                        requirement=ec.get("requirement", "") or "",
+                        must_have=bool(ec.get("must_have", False)),
+                        actor_evidence=_str_list(ec.get("actor_evidence")),
+                        evidence_status=ec.get("evidence_status", "missing") or "missing",
+                        notes=ec.get("notes", "") or "",
+                    ))
+                proposals.append(CastingProposal(
+                    actor_name=pd.get("actor_name", "") or "",
+                    category=pd.get("category", "needs_more_audition") or "needs_more_audition",
+                    supported_requirements=_str_list(pd.get("supported_requirements")),
+                    partial_requirements=_str_list(pd.get("partial_requirements")),
+                    missing_evidence=_str_list(pd.get("missing_evidence")),
+                    explicit_limits=_str_list(pd.get("explicit_limits")),
+                    tradeoffs=pd.get("tradeoffs", "") or "",
+                    stability_note=pd.get("stability_note", "") or "",
+                    adjustment_note=pd.get("adjustment_note", "") or "",
+                    next_steps=_str_list(pd.get("next_steps")),
+                    reference_score=float(pd.get("reference_score", 0.0) or 0.0),
+                    evidence_comparisons=comparisons,
+                ))
+            report.results.append(RoleCastingResult(
+                role_name=rd.get("role_name", "") or "",
+                proposals=proposals,
+                chemistry_checks=_str_list(rd.get("chemistry_checks")),
+                audition_task_summary=rd.get("audition_task_summary", "") or "",
+                confirmed_actor_name=rd.get("confirmed_actor_name", "") or "",
+                confirmation_reason=rd.get("confirmation_reason", "") or "",
+                confirmed_at=rd.get("confirmed_at", "") or "",
+            ))
+        return report
 
 
 # ============================================================
@@ -139,7 +217,7 @@ PROPOSAL_USER_PROMPT_TEMPLATE = """请基于以下角色要求和演员观察记
 
 【数值特征参考（仅反映特征强度差异，不代表演技或匹配度）】
 {quantitative_summary}
-
+{settings_section}
 请输出候选方案 JSON，结构如下：
 {{
   "actor_name": "演员名",
@@ -465,22 +543,30 @@ class MatchingEngine:
         self,
         role_card: RoleCard,
         actor_profile: ActorProfile,
+        production_settings: Optional[ProductionSettings] = None,
         max_retries: int = 2,
     ) -> Optional[CastingProposal]:
-        """单个角色×演员的候选方案"""
+        """单个角色×演员的候选方案（纳入剧团选角设定与档期/兼角约束）"""
         reference_score, quant_summaries = self._calculate_quantitative_reference(
             role_card, actor_profile
         )
 
+        def _finalize(proposal: CastingProposal) -> CastingProposal:
+            return self._apply_settings(proposal, production_settings, actor_profile)
+
         # Mock/演示模式或分析失败时，直接走启发式证据比较（不依赖 LLM 返回格式）
         if self.llm.is_mock_mode or actor_profile.analysis_status == "failed":
-            return self._heuristic_proposal(role_card, actor_profile, reference_score)
+            return _finalize(self._heuristic_proposal(role_card, actor_profile, reference_score))
 
         # 尝试 LLM 分析
+        settings_section = self._format_settings_section(
+            production_settings, actor_profile
+        )
         user_prompt = PROPOSAL_USER_PROMPT_TEMPLATE.format(
             role_card_json=role_card.to_json(),
             actor_profile_json=actor_profile.to_json(),
             quantitative_summary="\n".join(quant_summaries),
+            settings_section=settings_section,
         )
 
         for attempt in range(max_retries + 1):
@@ -489,8 +575,8 @@ class MatchingEngine:
             if "_parse_error" in result:
                 if attempt < max_retries:
                     continue
-                # LLM 失败，降级为启发式
-                return self._heuristic_proposal(role_card, actor_profile, reference_score)
+                # LLM 返回无法解析，降级为启发式（服务故障本身会抛 LLMServiceError）
+                return _finalize(self._heuristic_proposal(role_card, actor_profile, reference_score))
 
             try:
                 comparisons = []
@@ -504,7 +590,7 @@ class MatchingEngine:
                             notes=ec.get("notes", ""),
                         ))
 
-                return CastingProposal(
+                proposal = CastingProposal(
                     actor_name=result.get("actor_name", actor_profile.actor_name),
                     category=result.get("category", "needs_more_audition"),
                     supported_requirements=result.get("supported_requirements", []) if isinstance(result.get("supported_requirements"), list) else [],
@@ -518,20 +604,22 @@ class MatchingEngine:
                     reference_score=float(result.get("reference_score", reference_score)),
                     evidence_comparisons=comparisons,
                 )
+                return _finalize(proposal)
             except Exception as e:
                 print(f"    候选方案解析失败：{e}")
                 if attempt < max_retries:
                     continue
-                return self._heuristic_proposal(role_card, actor_profile, reference_score)
+                return _finalize(self._heuristic_proposal(role_card, actor_profile, reference_score))
 
-        return self._heuristic_proposal(role_card, actor_profile, reference_score)
+        return _finalize(self._heuristic_proposal(role_card, actor_profile, reference_score))
 
     def match_all(
         self,
         role_cards: List[RoleCard],
         actor_profiles: List[ActorProfile],
+        production_settings: Optional[ProductionSettings] = None,
     ) -> CastingReport:
-        """为所有角色生成候选方案"""
+        """为所有角色生成候选方案（纳入剧团选角设定）"""
         print(f"\n{'='*60}")
         print(f"  CastingNuwa · 候选方案整理")
         print(f"  角色数：{len(role_cards)} | 演员数：{len(actor_profiles)}")
@@ -548,7 +636,9 @@ class MatchingEngine:
 
             for j, actor in enumerate(actor_profiles):
                 print(f"    分析演员 {j+1}/{len(actor_profiles)}：{actor.actor_name}...", end=" ")
-                proposal = self.match_one(role, actor)
+                proposal = self.match_one(
+                    role, actor, production_settings=production_settings
+                )
                 if proposal:
                     role_result.proposals.append(proposal)
                     category_label = {
@@ -581,14 +671,110 @@ class MatchingEngine:
             report.results.append(role_result)
             print()
 
-        # 全局兼角检查
-        if len(role_cards) > 1 and len(actor_profiles) < len(role_cards):
+        # 全局分配检查（兼角 / 档期）
+        self._append_global_assignment_checks(report, role_cards, production_settings)
+
+        print(f"  候选方案整理完成\n")
+        return report
+
+    @staticmethod
+    def _format_settings_section(
+        settings: Optional[ProductionSettings],
+        actor_profile: ActorProfile,
+    ) -> str:
+        """把剧团设定与演员档期整理进 LLM 提示。"""
+        parts = []
+        if settings is not None:
+            parts.append("【剧团选角设定（纳入限制判断）】")
+            parts.append(f"- 是否接受反串：{'是' if settings.allow_cross_gender else '否'}")
+            parts.append(f"- 是否接受兼角：{'是' if settings.allow_double_casting else '否'}")
+            if settings.performance_style:
+                parts.append(f"- 表演风格：{settings.performance_style}")
+            if settings.must_have_requirements:
+                parts.append("- 必须满足：" + "、".join(settings.must_have_requirements))
+            if settings.schedule_constraints:
+                parts.append(f"- 档期/排练时间约束：{settings.schedule_constraints}")
+        schedule = (getattr(actor_profile, "schedule_info", "") or "").strip()
+        if schedule:
+            parts.append(f"【该演员自述档期】{schedule}")
+            parts.append(
+                "若演员档期与剧团排练约束明确冲突，请在 explicit_limits 写明；"
+                "无法确定则放入 next_steps 建议人工核对，不要臆断冲突。"
+            )
+        if not parts:
+            return ""
+        return "\n" + "\n".join(parts) + "\n"
+
+    @staticmethod
+    def _apply_settings(
+        proposal: CastingProposal,
+        settings: Optional[ProductionSettings],
+        actor_profile: ActorProfile,
+    ) -> CastingProposal:
+        """启发式/LLM 结果统一叠加档期核对提示（自然语言不自动判定冲突）。"""
+        if settings is None:
+            return proposal
+        constraint = (settings.schedule_constraints or "").strip()
+        schedule = (getattr(actor_profile, "schedule_info", "") or "").strip()
+        if not constraint and not schedule:
+            return proposal
+
+        negative_words = ("不能", "无法", "没空", "没有空", "冲突", "不行", "来不了", "没时间")
+        if schedule and any(word in schedule for word in negative_words):
+            line = (
+                f"演员自述档期可能受限：{schedule}；"
+                f"剧团排练要求：{constraint or '（未填写）'}，请人工核对"
+            )
+            if line not in proposal.explicit_limits:
+                proposal.explicit_limits.append(line)
+        else:
+            line = (
+                f"请人工核对档期（剧团要求：{constraint or '未填写'}；"
+                f"演员自述：{schedule or '未填写'}）"
+            )
+            if line not in proposal.next_steps:
+                proposal.next_steps.append(line)
+        return proposal
+
+    def _append_global_assignment_checks(
+        self,
+        report: CastingReport,
+        role_cards: List[RoleCard],
+        settings: Optional[ProductionSettings],
+    ) -> None:
+        """汇总兼角与档期的全局分配提示。"""
+        if len(role_cards) > 1 and report.actor_count < report.role_count:
             report.global_notes.append(
                 "演员数少于角色数，可能需要兼角安排，请检查兼角可行性和演员档期"
             )
 
-        print(f"  候选方案整理完成\n")
-        return report
+        priority_map: dict = {}
+        for result in report.results:
+            for proposal in result.proposals:
+                if proposal.category == "priority_audition":
+                    priority_map.setdefault(proposal.actor_name, []).append(result.role_name)
+        double_cast = {
+            name: roles for name, roles in priority_map.items() if len(roles) > 1
+        }
+
+        disallow_double = settings is not None and not settings.allow_double_casting
+        for name, roles in double_cast.items():
+            role_text = "、".join(roles)
+            if disallow_double:
+                report.global_notes.append(
+                    f"演员 {name} 同时是角色 {role_text} 的优先试演人选，"
+                    "但剧团设定不接受兼角，请为不同角色分配不同演员或安排加试"
+                )
+            else:
+                report.global_notes.append(
+                    f"演员 {name} 同时适合角色 {role_text}，"
+                    "如安排兼角请确认排练、换装与档期可行"
+                )
+
+        if settings is not None and (settings.schedule_constraints or "").strip():
+            report.global_notes.append(
+                f"剧团排练/档期约束：{settings.schedule_constraints}，请逐位核对演员自述档期"
+            )
 
     @staticmethod
     def save_report(report: CastingReport, output_path: str) -> str:

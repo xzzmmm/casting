@@ -12,7 +12,11 @@ import os
 import json
 from typing import Optional, List
 
-from .actor_models import ActorProfile
+from .actor_models import (
+    ActorProfile,
+    AdjustmentResponse,
+    ObservationRecord,
+)
 from .actor_prompts import ACTOR_SYSTEM_PROMPT, ACTOR_USER_PROMPT_TEMPLATE
 from .llm_client import LLMClient
 
@@ -29,6 +33,9 @@ class ActorProfiler:
         actor_name: str = "",
         material_note: str = "以下为演员的自我介绍和试镜转写文本。",
         role_requirements: str = "（本次未提供具体角色要求，请基于材料生成通用观察记录和待验证项）",
+        adjustment_instruction: str = "",
+        second_round_material: str = "",
+        schedule_info: str = "",
         max_retries: int = 2,
     ) -> Optional[ActorProfile]:
         """
@@ -39,6 +46,9 @@ class ActorProfiler:
             actor_name: 演员姓名（可选，材料中没有时使用）
             material_note: 材料说明
             role_requirements: 目标角色的可观察表演要求（用于关联观察）
+            adjustment_instruction: 第一遍后给演员的调整指令（有第二遍材料时生效）
+            second_round_material: 指导后复试（第二遍）的表现记录
+            schedule_info: 演员档期/可排练时间（直接存档，不经 LLM 判断演技）
             max_retries: 最大重试次数
 
         Returns:
@@ -52,10 +62,14 @@ class ActorProfiler:
         if self.llm.is_mock_mode:
             print(f"  ⚠️  当前为 Mock 演示模式，输出为示例数据")
 
+        retest_section = self._build_retest_section(
+            adjustment_instruction, second_round_material
+        )
         user_prompt = ACTOR_USER_PROMPT_TEMPLATE.format(
             actor_material=actor_material,
             material_note=material_note,
             role_requirements=role_requirements,
+            retest_section=retest_section,
         )
 
         for attempt in range(max_retries + 1):
@@ -72,10 +86,20 @@ class ActorProfiler:
 
             try:
                 profile = ActorProfile.from_dict(result)
-                if actor_name and not profile.actor_name:
+                placeholder_names = {"", "未命名演员", "未知演员", "未知"}
+                if actor_name and (
+                    not profile.actor_name or profile.actor_name in placeholder_names
+                ):
                     profile.actor_name = actor_name
                 if "text" not in profile.analysis_sources:
                     profile.analysis_sources.append("text")
+                if schedule_info:
+                    profile.schedule_info = schedule_info
+                if second_round_material and second_round_material.strip() \
+                        and not profile.adjustment_responses:
+                    self._attach_retest_placeholder(
+                        profile, adjustment_instruction, second_round_material
+                    )
                 print(f"  ✅ 演员画像生成完成：{profile.actor_name}\n")
                 return profile
             except Exception as e:
@@ -85,6 +109,49 @@ class ActorProfiler:
                 return None
 
         return None
+
+    @staticmethod
+    def _build_retest_section(
+        adjustment_instruction: str, second_round_material: str
+    ) -> str:
+        """构造两轮复试提示段落；无第二遍材料时返回空串。"""
+        if not second_round_material or not second_round_material.strip():
+            return ""
+        instruction = adjustment_instruction.strip() or "（请用与第一遍不同的方式处理同一段）"
+        return (
+            "\n【指导后复试（两轮试镜）】\n"
+            f"第一遍后给出的调整指令：{instruction}\n"
+            "第二遍（复试）表现记录：\n---\n"
+            f"{second_round_material.strip()}\n---\n"
+            "请在 adjustment_responses 中对比两遍，每项包含：\n"
+            "instruction_given（给出的调整指令）、observed_change（第二遍实际发生的变化）、"
+            "change_quality（有效/部分有效/无效/无法判断）、"
+            "interpretation（这说明演员能否理解并执行指导）、confidence（高/中/低）。\n"
+            "observations 的 timestamp 请标注“第一遍”或“第二遍”以区分两轮表现。\n"
+        )
+
+    @staticmethod
+    def _attach_retest_placeholder(profile, adjustment_instruction, second_round_material):
+        """有第二遍材料但模型未产出复试对比时，补诚实占位，标“无法判断”，不伪造结论。"""
+        instruction = adjustment_instruction.strip() or "（用与第一遍不同的方式处理同一段）"
+        excerpt = second_round_material.strip().replace("\n", " ")
+        if len(excerpt) > 120:
+            excerpt = excerpt[:120] + "…"
+        profile.adjustment_responses.append(AdjustmentResponse(
+            instruction_given=instruction,
+            observed_change=f"已记录第二遍材料，实际变化需人工核对：{excerpt}",
+            change_quality="无法判断",
+            interpretation="请人工对比两遍，判断演员是否理解并执行了调整指令。",
+            confidence="低",
+        ))
+        profile.observations.append(ObservationRecord(
+            timestamp="第二遍",
+            observed_behavior=excerpt,
+            evidence_type="直接观察",
+            confidence="中",
+            source="text",
+            verification_suggestion="对照调整指令，确认第二遍表达方式是否发生服务于任务的变化。",
+        ))
 
     def profile_from_audio(
         self,

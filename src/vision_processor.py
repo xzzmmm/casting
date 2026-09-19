@@ -23,6 +23,15 @@ from typing import Optional, List, Dict, Any, Tuple
 import math
 
 
+def fmt_ts(seconds: float) -> str:
+    """把秒数格式化为 m:ss。"""
+    try:
+        total = int(round(float(seconds)))
+    except (TypeError, ValueError):
+        return "0:00"
+    return f"{total // 60}:{total % 60:02d}"
+
+
 @dataclass
 class FacialExpressionFeatures:
     """面部表情特征"""
@@ -154,6 +163,9 @@ class VisionAnalysisResult:
     video_path: str = ""
     analysis_sources: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    frame_timestamps: List[float] = field(default_factory=list)  # 每帧对应的时间点（秒）
+    duration: float = 0.0        # 视频总时长（秒）
+    sampling_note: str = ""      # 采样覆盖区间的人类可读说明
 
     def to_dict(self) -> dict:
         return {
@@ -163,6 +175,9 @@ class VisionAnalysisResult:
             "video_path": self.video_path,
             "analysis_sources": self.analysis_sources,
             "warnings": self.warnings,
+            "frame_timestamps": self.frame_timestamps,
+            "duration": self.duration,
+            "sampling_note": self.sampling_note,
         }
 
 
@@ -269,20 +284,43 @@ class VisionProcessor:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = total_frames / fps if fps > 0 else 0
 
-        # 计算抽帧位置
-        frame_step = max(1, int(fps * self.frame_interval))
-        frame_indices = list(range(0, total_frames, frame_step))[:self.max_frames]
+        # 全片均匀采样：在 [0, 末帧] 等距取点，覆盖开头到结尾，
+        # 避免旧逻辑“从头按固定间隔取前 N 帧”导致长视频后半段完全丢失。
+        if total_frames > 0:
+            target = min(self.max_frames, total_frames)
+            if target <= 1:
+                frame_indices = [0]
+            else:
+                raw_indices = np.linspace(0, total_frames - 1, target)
+                frame_indices = sorted({int(x) for x in raw_indices})
+        else:
+            frame_indices = []
 
         frames = []
+        timestamps = []
         for idx in frame_indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
             if ret:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 frames.append(frame_rgb)
+                timestamps.append(idx / fps if fps > 0 else 0.0)
 
         cap.release()
-        print(f"  [VisionProcessor] 抽取 {len(frames)} 帧 (视频时长: {duration:.1f}秒, FPS: {fps:.1f})")
+        self.frame_timestamps = timestamps
+        self.video_duration = duration
+        if timestamps:
+            cover = f"{fmt_ts(timestamps[0])}-{fmt_ts(timestamps[-1])}"
+            self.sampling_note = (
+                f"全片均匀采样 {len(timestamps)} 帧，覆盖 {cover}，总时长 {duration:.1f} 秒"
+            )
+            print(
+                f"  [VisionProcessor] 均匀抽取 {len(frames)} 帧，覆盖 {cover}"
+                f"（总时长 {duration:.1f} 秒，FPS {fps:.1f}）"
+            )
+        else:
+            self.sampling_note = ""
+            print("  [VisionProcessor] 未能抽取到有效帧")
         return frames
 
     def _calculate_distance(self, point1, point2) -> float:
@@ -617,16 +655,21 @@ class VisionProcessor:
         result.video_path = video_path
         result.analysis_sources.append("video")
 
-        # 抽帧
+        # 抽帧（全片均匀采样，带时间戳）
         frames = self.extract_frames(video_path)
         result.frames_extracted = len(frames)
+        result.frame_timestamps = list(getattr(self, "frame_timestamps", []))
+        result.duration = getattr(self, "video_duration", 0.0)
+        result.sampling_note = getattr(self, "sampling_note", "")
 
         if len(frames) == 0:
             return result
 
-        # mediapipe 不可用时跳过视觉分析（优雅降级）
+        # mediapipe 不可用时跳过视觉分析（优雅降级，但保留全片采样覆盖信息）
         if not self._mediapipe_available:
             result.warnings.append("mediapipe solutions API 不可用，已跳过高阶视觉分析（面部表情/肢体语言）")
+            if result.sampling_note:
+                result.warnings.append(result.sampling_note + "；帧时间戳已保留，供逐段核对")
             print("  ⚠️  mediapipe solutions 不可用，跳过面部/肢体分析，仅保留基础帧信息")
             return result
 

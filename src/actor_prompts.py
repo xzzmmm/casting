@@ -82,7 +82,7 @@ ACTOR_USER_PROMPT_TEMPLATE = """请整理以下演员试镜材料的观察记录
 
 【角色要求（如有，用于关联观察）】
 {role_requirements}
-
+{retest_section}
 请输出观察记录 JSON，结构如下：
 {{
   "actor_name": "演员姓名/代号",

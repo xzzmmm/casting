@@ -24,6 +24,18 @@ except ImportError:
     HAS_OPENAI = False
 
 
+class LLMServiceError(RuntimeError):
+    """真实 LLM 服务调用失败。
+
+    与"启动即演示模式"区分：配置了 API Key 却调用失败（网络/鉴权/限流/超时）
+    时抛出，明确告知调用方，绝不能静默回退到 Mock 假数据冒充真实结果。
+    """
+
+    def __init__(self, message, cause=None):
+        super().__init__(message)
+        self.cause = cause
+
+
 class LLMClient:
     """LLM 客户端，封装 OpenAI 兼容 API 调用"""
 
@@ -53,6 +65,10 @@ class LLMClient:
 
         self._client = None
         self._mock_mode = False
+        # 启动即演示：用户未配置 Key 或未装 openai，属于主动体验，允许 Mock
+        self._demo_by_default = False
+        # 配置了 Key 但客户端初始化失败的真实错误（不静默降级为演示）
+        self._init_error = ""
 
         # 尝试初始化真实客户端
         if self.api_key and HAS_OPENAI:
@@ -63,8 +79,9 @@ class LLMClient:
                 self._client = OpenAI(**kwargs)
                 print(f"[LLMClient] 已连接 API: {self.base_url or 'OpenAI 默认'} | 模型: {self.model}")
             except Exception as e:
-                print(f"[LLMClient] API 初始化失败，进入 Mock 模式: {e}")
-                self._mock_mode = True
+                # 配置了 Key 却无法构造客户端，属于真实配置错误，记录并在调用时报错
+                self._init_error = f"API 客户端初始化失败：{e}"
+                print(f"[LLMClient] {self._init_error}（将不会回退演示数据）")
         else:
             if not self.api_key:
                 print("[LLMClient] 未配置 LLM_API_KEY，进入 Mock 演示模式")
@@ -72,6 +89,7 @@ class LLMClient:
                 print("[LLMClient] 未安装 openai 库，进入 Mock 演示模式")
                 print("           安装命令: pip install openai")
             self._mock_mode = True
+            self._demo_by_default = True
 
     @property
     def is_mock_mode(self) -> bool:
@@ -89,8 +107,15 @@ class LLMClient:
         Returns:
             LLM 返回的文本内容
         """
-        if self._mock_mode:
+        # 仅“启动即演示模式”使用 Mock 假数据（页面会明确标注 demo）
+        if self._mock_mode and self._demo_by_default:
             return self._mock_response(system_prompt, user_prompt)
+
+        if self._init_error:
+            raise LLMServiceError(
+                f"真实 AI 未就绪：{self._init_error}。请检查 LLM_BASE_URL/LLM_MODEL 配置，"
+                "本工具不会用演示数据冒充真实结果。"
+            )
 
         try:
             response = self._client.chat.completions.create(
@@ -104,10 +129,13 @@ class LLMClient:
             )
             return response.choices[0].message.content
         except Exception as e:
+            # 真实调用失败：明确报错，绝不静默回退 Mock 假数据
             print(f"[LLMClient] API 调用失败: {e}")
-            print("[LLMClient] 回退到 Mock 模式")
-            self._mock_mode = True
-            return self._mock_response(system_prompt, user_prompt)
+            raise LLMServiceError(
+                f"真实 AI 调用失败（{type(e).__name__}）：{e}。"
+                "请检查网络、API Key、额度或 Base URL；本工具不会用演示数据冒充真实结果。",
+                cause=e,
+            )
 
     def chat_json(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """
