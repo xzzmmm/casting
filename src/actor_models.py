@@ -195,6 +195,26 @@ class ActorProfile:
     # 档期与可用性（演员自述，供兼角/档期冲突检查；不参与演技判断）
     schedule_info: str = ""           # 可排练/可演出时间，如"周三晚、周末全天；周四有课"
 
+    def has_substantive_content(self) -> bool:
+        """是否包含可用于选角判断的实质内容。
+
+        仅有名字、其余全空（如模型返回空 JSON）时返回 False，
+        用于拒绝“零观察、状态却 complete”的空画像冒充成功。
+        """
+        if self.observations or self.verification_items or self.adjustment_responses:
+            return True
+        collection = self.evidence
+        if collection is not None and any((
+            collection.performance_evidence,
+            collection.self_reports,
+            collection.past_experience,
+        )):
+            return True
+        for trait in self.quantitative_traits.values():
+            if trait is not None and trait.score is not None:
+                return True
+        return False
+
     def to_dict(self) -> dict:
         return asdict(self)
 

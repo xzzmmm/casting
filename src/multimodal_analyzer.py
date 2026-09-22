@@ -350,6 +350,13 @@ class MultimodalAnalyzer:
                     profile.actor_name = actor_name
                 profile.analysis_sources = modalities
 
+                # 非演示模式下空画像视为无效：重试，仍为空则落到 failed 分支
+                if not self.llm.is_mock_mode and not profile.has_substantive_content():
+                    print("  ⚠️ 模型返回空观察记录，视为无效结果")
+                    if attempt < max_retries:
+                        continue
+                    break
+
                 # 设置分析状态：有降级警告则 partial，模态齐全无警告则 complete
                 if modality_warnings:
                     profile.analysis_status = "partial"

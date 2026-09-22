@@ -100,6 +100,12 @@ class ActorProfiler:
                     self._attach_retest_placeholder(
                         profile, adjustment_instruction, second_round_material
                     )
+                # 非演示模式下，模型返回空画像视为失败：重试后仍为空则返回 None。
+                if not self.llm.is_mock_mode and not profile.has_substantive_content():
+                    print("  ⚠️ 模型返回空观察记录，视为无效结果")
+                    if attempt < max_retries:
+                        continue
+                    return None
                 print(f"  ✅ 演员画像生成完成：{profile.actor_name}\n")
                 return profile
             except Exception as e:

@@ -1,2 +1,14 @@
-gradio>=4.0.0
-openai>=1.0.0
+# ===== Web 界面与 LLM（必需）=====
+gradio>=4.0.0          # Web 界面（运行 app.py）
+openai>=1.0.0          # LLM API（OpenAI 兼容，支持 DeepSeek/智谱/豆包等）
+
+# ===== 音频模式（双模态）：语音转写 + 声学特征 =====
+faster-whisper>=1.0.0  # 语音转写（音频/视频演员观察）
+librosa>=0.10.0        # 声学特征（语速、停顿、能量等）
+
+# ===== 视频模式（三模态）：抽帧 / 媒体读取 / 面部姿态 =====
+opencv-python>=4.8.0   # 视频抽帧与图像处理
+moviepy>=1.0.3         # 从视频中提取音轨
+# mediapipe 的 solutions API 在 Python 3.13 不可用，仅 3.12 及以下安装；
+# 缺失或不可用时视觉分析会自动降级，不影响文本与音频流程。
+mediapipe>=0.10.0 ; python_version < "3.13"

@@ -329,14 +329,9 @@ class MatchingEngine:
             proposal.next_steps.append("请先完善角色卡的可观察表演要求")
             return proposal
 
-        # 收集演员所有观察证据文本
-        observation_texts = " ".join(
-            obs.observed_behavior + " " + obs.possible_interpretation
-            for obs in actor_profile.observations
-        )
-
         supported_count = 0
         must_have_missing = 0
+        tentative_leads = []
 
         for req in requirements:
             comparison = EvidenceComparison(
@@ -351,33 +346,52 @@ class MatchingEngine:
 
             matched_evidence = []
             contradicted_evidence = []
+            tentative_evidence = []
             hit_keywords = set()
             for obs in actor_profile.observations:
-                obs_text = obs.observed_behavior + obs.possible_interpretation
-
-                # 先检测相反证据（如要求"克制"但观察到"外放"）
-                contrast = self._detect_contradiction(
-                    req.requirement + " ".join(req.observable_signals),
-                    obs_text,
+                behavior = obs.observed_behavior or ""
+                # 只有“直接观察”且非演员自述的事实描述，才能作为支持/相反证据。
+                # possible_interpretation 是推断（含“可能……”），不纳入直接证据的关键词命中。
+                is_direct = (
+                    obs.evidence_type == "直接观察"
+                    and (obs.source or "") != "self_report"
                 )
-                if contrast:
-                    contradicted_evidence.append(
-                        f"[{obs.timestamp}] {obs.observed_behavior}（出现相反信号：{contrast}）"
-                    )
-                    continue
 
-                for kw in signal_keywords:
-                    if len(kw) >= 2 and kw in obs_text:
-                        hit_keywords.add(kw)
-                        evidence_line = f"[{obs.timestamp}] {obs.observed_behavior}"
-                        if evidence_line not in matched_evidence:
-                            matched_evidence.append(evidence_line)
-                        break
+                if is_direct:
+                    # 先检测相反证据（如要求"克制"但观察到"外放"）
+                    contrast = self._detect_contradiction(
+                        req.requirement + " ".join(req.observable_signals),
+                        behavior,
+                    )
+                    if contrast:
+                        contradicted_evidence.append(
+                            f"[{obs.timestamp}] {behavior}（出现相反信号：{contrast}）"
+                        )
+                        continue
+
+                    for kw in signal_keywords:
+                        if len(kw) >= 2 and kw in behavior:
+                            hit_keywords.add(kw)
+                            evidence_line = f"[{obs.timestamp}] {behavior}"
+                            if evidence_line not in matched_evidence:
+                                matched_evidence.append(evidence_line)
+                            break
+                else:
+                    # 推断 / 自述 / 无法判断：即便命中信号词，也只能作为待验证线索，
+                    # 不能独立满足硬性要求。
+                    haystack = behavior + " " + (obs.possible_interpretation or "")
+                    for kw in signal_keywords:
+                        if len(kw) >= 2 and kw in haystack:
+                            label = obs.evidence_type or "无法判断"
+                            line = f"[{obs.timestamp}] {behavior}（{label}，需直接观察验证）"
+                            if line not in tentative_evidence:
+                                tentative_evidence.append(line)
+                            break
 
             if contradicted_evidence and matched_evidence:
                 comparison.actor_evidence = (contradicted_evidence[:2] + matched_evidence[:2])[:3]
                 comparison.evidence_status = "partial"
-                comparison.notes = "观察证据相互冲突，既有支持也有相反表现，需指导后复试澄清"
+                comparison.notes = "观察证据相互冲突，既有直接支持也有相反表现，需指导后复试澄清"
                 proposal.missing_evidence.append(
                     f"{req.requirement}（证据冲突，需复试确认）"
                 )
@@ -395,9 +409,20 @@ class MatchingEngine:
             elif matched_evidence:
                 comparison.actor_evidence = matched_evidence[:3]
                 comparison.evidence_status = "supported"
-                comparison.notes = f"匹配信号：{ '、'.join(sorted(hit_keywords)) }"
+                comparison.notes = f"直接观察匹配信号：{ '、'.join(sorted(hit_keywords)) }"
                 proposal.supported_requirements.append(req.requirement)
                 supported_count += 1
+            elif tentative_evidence:
+                # 仅有推断/自述线索：标 partial 并要求直接观察验证，硬性要求仍算未证实
+                comparison.actor_evidence = tentative_evidence[:3]
+                comparison.evidence_status = "partial"
+                comparison.notes = "仅有推断/自述线索，尚无直接观察证据，需复试确认"
+                proposal.missing_evidence.append(
+                    f"{req.requirement}（仅有间接线索，需直接观察验证）"
+                )
+                tentative_leads.append(req.requirement)
+                if req.must_have:
+                    must_have_missing += 1
             else:
                 comparison.evidence_status = "missing"
                 comparison.notes = "现有观察记录中未找到对应证据"
@@ -408,6 +433,12 @@ class MatchingEngine:
                     must_have_missing += 1
 
             proposal.evidence_comparisons.append(comparison)
+
+        # 推断/自述线索只能生成待验证项，不能冒充直接观察证据
+        for req_name in tentative_leads:
+            step = f"补充直接观察验证「{req_name}」（现有仅为推断/自述线索，不能据此满足硬性要求）"
+            if step not in proposal.next_steps:
+                proposal.next_steps.append(step)
 
         # 加入演员已有的待验证项
         for vi in actor_profile.verification_items:
@@ -468,6 +499,47 @@ class MatchingEngine:
             proposal.category = "needs_more_audition"
             proposal.explicit_limits.append("分析失败，当前画像不可用，需要重新分析")
 
+        return proposal
+
+    VALID_CATEGORIES = {"priority_audition", "needs_more_audition", "explicit_limit"}
+    VALID_EVIDENCE_STATUS = {"supported", "partial", "missing", "contradicted"}
+
+    def _sanitize_llm_proposal(self, proposal: CastingProposal,
+                               actor_profile: ActorProfile) -> CastingProposal:
+        """校验 LLM 返回的候选方案，防止不可信结论进入报告。
+
+        - 演员身份由输入绑定，模型不得替换成其他人名；
+        - 候选类别、证据状态做枚举校验，参考分钳制在 0-100；
+        - “优先试演”必须有直接支持证据且硬性要求无相反表现，否则降级为补充试镜。
+        """
+        proposal.actor_name = actor_profile.actor_name
+        if proposal.category not in self.VALID_CATEGORIES:
+            proposal.category = "needs_more_audition"
+        try:
+            score = float(proposal.reference_score)
+        except (TypeError, ValueError):
+            score = 0.0
+        proposal.reference_score = round(max(0.0, min(100.0, score)), 1)
+        for comp in proposal.evidence_comparisons:
+            if comp.evidence_status not in self.VALID_EVIDENCE_STATUS:
+                comp.evidence_status = "missing"
+
+        if proposal.category == "priority_audition":
+            supported_n = sum(
+                1 for c in proposal.evidence_comparisons
+                if c.evidence_status == "supported"
+            )
+            must_contra = any(
+                c.must_have and c.evidence_status == "contradicted"
+                for c in proposal.evidence_comparisons
+            )
+            if supported_n == 0 or must_contra:
+                proposal.category = "needs_more_audition"
+                if supported_n == 0:
+                    proposal.missing_evidence.append(
+                        "模型给出“优先试演”但未提供任何直接支持证据，已降级为补充试镜"
+                    )
+                proposal.stability_note = "缺少直接证据支持，不能仅凭模型结论给优先试演"
         return proposal
 
     @staticmethod
@@ -582,11 +654,14 @@ class MatchingEngine:
                 comparisons = []
                 for ec in result.get("evidence_comparisons", []):
                     if isinstance(ec, dict):
+                        raw_status = ec.get("evidence_status", "missing")
+                        if raw_status not in self.VALID_EVIDENCE_STATUS:
+                            raw_status = "missing"
                         comparisons.append(EvidenceComparison(
                             requirement=ec.get("requirement", ""),
-                            must_have=ec.get("must_have", False),
+                            must_have=bool(ec.get("must_have", False)),
                             actor_evidence=ec.get("actor_evidence", []) if isinstance(ec.get("actor_evidence"), list) else [],
-                            evidence_status=ec.get("evidence_status", "missing"),
+                            evidence_status=raw_status,
                             notes=ec.get("notes", ""),
                         ))
 
@@ -604,6 +679,7 @@ class MatchingEngine:
                     reference_score=float(result.get("reference_score", reference_score)),
                     evidence_comparisons=comparisons,
                 )
+                proposal = self._sanitize_llm_proposal(proposal, actor_profile)
                 return _finalize(proposal)
             except Exception as e:
                 print(f"    候选方案解析失败：{e}")

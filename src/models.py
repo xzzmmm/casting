@@ -64,14 +64,22 @@ class TraitScore:
         if not isinstance(data, dict):
             return cls()
 
+        # 证据条数以“实际存在、去重、非空白”的证据为准。
+        # 模型自报的 evidence_count 不得高于真实条数，防止“声明有证据但数组为空”
+        # 或“同一条证据重复充数”绕过证据强约束。
         raw_evidence = data.get("evidence", [])
-        evidence = [str(e) for e in raw_evidence if e] if isinstance(raw_evidence, list) else []
-
-        try:
-            declared = int(data.get("evidence_count", 0) or 0)
-        except (ValueError, TypeError):
-            declared = 0
-        evidence_count = max(declared, len(evidence))
+        evidence = []
+        if isinstance(raw_evidence, list):
+            seen = set()
+            for item in raw_evidence:
+                if item is None:
+                    continue
+                text = str(item).strip()
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                evidence.append(text)
+        evidence_count = len(evidence)
 
         score = data.get("score")
         if score is not None and not isinstance(score, int):

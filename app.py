@@ -26,6 +26,7 @@ import os
 import sys
 import json
 import re
+import uuid
 from datetime import datetime
 
 # 修复 OpenMP 运行时冲突（faster-whisper/ctranslate2 与 numpy/opencv 共存时）
@@ -106,31 +107,49 @@ class AppState:
         if not isinstance(data, dict):
             raise ValueError("项目文件格式不正确")
 
-        self.script_text = data.get("script_text", "") or ""
-        self.role_cards = [
+        # 字段类型校验：正常存档这些字段永远是列表/字典；显式给错类型应判为非法。
+        if "roles" in data and not isinstance(data["roles"], list):
+            raise ValueError("项目文件 roles 字段格式不正确")
+        if "actors" in data and not isinstance(data["actors"], list):
+            raise ValueError("项目文件 actors 字段格式不正确")
+        if "audition_tasks" in data and not isinstance(data["audition_tasks"], (dict, type(None))):
+            raise ValueError("项目文件 audition_tasks 字段格式不正确")
+
+        # 先在局部变量中完整解析，任何一步抛异常都不会半改写当前项目。
+        script_text = data.get("script_text", "") or ""
+        role_cards = [
             RoleCard.from_dict(item)
-            for item in data.get("roles", []) if isinstance(item, dict)
+            for item in (data.get("roles") or []) if isinstance(item, dict)
         ]
         settings = data.get("production_settings")
-        self.production_settings = (
+        production_settings = (
             ProductionSettings.from_dict(settings)
             if isinstance(settings, dict) else ProductionSettings()
         )
-        self.audition_tasks = {}
-        for name, task_data in (data.get("audition_tasks", {}) or {}).items():
+        audition_tasks = {}
+        for name, task_data in (data.get("audition_tasks") or {}).items():
             if isinstance(task_data, dict):
-                self.audition_tasks[name] = AuditionTask.from_dict(task_data)
-        self.actor_profiles = [
+                audition_tasks[name] = AuditionTask.from_dict(task_data)
+        actor_profiles = [
             ActorProfile.from_dict(item)
-            for item in data.get("actors", []) if isinstance(item, dict)
+            for item in (data.get("actors") or []) if isinstance(item, dict)
         ]
         report = data.get("casting_report")
-        self.casting_report = (
+        casting_report = (
             self.matching_engine_cls_report(report)
             if isinstance(report, dict) else None
         )
         crew = data.get("crew_analysis")
-        self.crew_analysis = CrewAnalysisResult.from_dict(crew) if isinstance(crew, dict) else None
+        crew_analysis = CrewAnalysisResult.from_dict(crew) if isinstance(crew, dict) else None
+
+        # 全部成功后再整体替换
+        self.script_text = script_text
+        self.role_cards = role_cards
+        self.production_settings = production_settings
+        self.audition_tasks = audition_tasks
+        self.actor_profiles = actor_profiles
+        self.casting_report = casting_report
+        self.crew_analysis = crew_analysis
 
     @staticmethod
     def matching_engine_cls_report(report_dict):
@@ -692,11 +711,24 @@ def _split_lines(text):
     return [line.strip(" -•\t") for line in (text or "").splitlines() if line.strip()]
 
 
+def _settings_key(settings):
+    """选角设定中影响下游结果的实质字段（忽略 confirmed 标记），用于判断是否需要作废下游。"""
+    return (
+        settings.performance_style,
+        settings.role_interpretation,
+        tuple(settings.must_have_requirements),
+        tuple(settings.can_rehearse),
+        settings.allow_cross_gender,
+        settings.allow_double_casting,
+        settings.schedule_constraints,
+    )
+
+
 def save_settings(state, style, interp, must_text, rehearse_text,
                   cross_gender, double_casting, schedule):
     if state is None:
         state = AppState()
-    state.production_settings = ProductionSettings(
+    new_settings = ProductionSettings(
         performance_style=style or "",
         role_interpretation=interp or "",
         must_have_requirements=_split_lines(must_text),
@@ -706,7 +738,15 @@ def save_settings(state, style, interp, must_text, rehearse_text,
         schedule_constraints=schedule or "",
         confirmed=True,
     )
-    return state, format_settings_markdown(state.production_settings), "✅ 选角设定已保存并确认，可以整理候选方案。"
+    changed = _settings_key(state.production_settings) != _settings_key(new_settings)
+    state.production_settings = new_settings
+    notice = "✅ 选角设定已保存并确认，可以整理候选方案。"
+    if changed:
+        # 设定是候选方案、人工确认与试镜任务的依据，依据变化必须作废重算（保留原始材料）
+        state.casting_report = None
+        state.audition_tasks = {}
+        notice += "\n\n⚠️ 检测到选角设定发生变化，此前的候选方案、人工确认与试镜任务已失效，请重新生成。"
+    return state, format_settings_markdown(state.production_settings), notice
 
 
 # ============================================================
@@ -768,14 +808,16 @@ def export_auditions(state):
     if not state.audition_tasks:
         return None, "⚠️ 还没有试镜任务，请先生成。"
     os.makedirs("output", exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
     path = os.path.join("output", f"试镜任务_{stamp}.md")
     parts = ["# 两轮试镜任务\n"]
     for task in state.audition_tasks.values():
         parts.append(format_audition_task_markdown(task))
         parts.append("\n---\n")
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         f.write("\n".join(parts))
+    os.replace(tmp_path, path)
     return path, f"✅ 已导出：{path}"
 
 
@@ -858,19 +900,31 @@ def profile_actors(state, actor_text, target_role_name, adjustment_text,
         actor_upd = gr.update(choices=state.actor_names())
         return state, "❌ 演员观察记录生成失败", "", actor_upd, actor_upd, "🔴 未生成观察记录。"
 
-    state.actor_profiles = profiles
+    # 按演员名 upsert：同名更新（如补录单人复试），新名追加，绝不整表覆盖已有演员
+    index_by_name = {p.actor_name: i for i, p in enumerate(state.actor_profiles)}
+    added = 0
+    updated = 0
+    for profile in profiles:
+        if profile.actor_name in index_by_name:
+            state.actor_profiles[index_by_name[profile.actor_name]] = profile
+            updated += 1
+        else:
+            index_by_name[profile.actor_name] = len(state.actor_profiles)
+            state.actor_profiles.append(profile)
+            added += 1
     state.casting_report = None
 
-    parts = [f"### 观察记录完成：共 {len(profiles)} 位演员\n"]
-    for profile in profiles:
+    all_profiles = list(state.actor_profiles)
+    parts = [f"### 观察记录：名单共 {len(all_profiles)} 位（本次新增 {added}、更新 {updated}）\n"]
+    for profile in all_profiles:
         parts.append(format_actor_profile_markdown(profile))
         parts.append("\n---\n")
-    json_output = json.dumps({"actors": [p.to_dict() for p in profiles]},
+    json_output = json.dumps({"actors": [p.to_dict() for p in all_profiles]},
                              indent=2, ensure_ascii=False)
     actor_names = state.actor_names()
     actor_upd = gr.update(choices=actor_names, value=actor_names[0] if actor_names else None)
     return (state, "\n".join(parts), json_output, actor_upd, actor_upd,
-            f"✅ 已记录 {len(profiles)} 位演员，可到「⑤ 候选方案」整理。")
+            f"✅ 本次新增 {added}、更新 {updated} 位，名单共 {len(all_profiles)} 位，可到「⑤ 候选方案」整理。")
 
 
 def _append_media_profile(state, profile, error_prefix):
@@ -881,8 +935,10 @@ def _append_media_profile(state, profile, error_prefix):
     state.casting_report = None
     actor_names = state.actor_names()
     actor_upd = gr.update(choices=actor_names, value=profile.actor_name)
+    notice = f"✅ 已加入演员：{profile.actor_name}"
+    # 统一返回 6 项（md, json, 下拉, 下拉, 下拉, 通知），与失败分支索引对齐
     return (format_actor_profile_markdown(profile), profile.to_json(),
-            actor_upd, actor_upd, f"✅ 已加入演员：{profile.actor_name}")
+            actor_upd, actor_upd, actor_upd, notice)
 
 
 def profile_from_video_file(state, video_path, actor_name, text_material):
@@ -946,6 +1002,9 @@ def match_single(state, role_name, actor_name):
     actor = next((a for a in state.actor_profiles if a.actor_name == actor_name), None)
     if not role or not actor:
         return "❌ 未找到对应的角色卡或演员观察记录。", "❌ 数据缺失。"
+    if not state.production_settings.confirmed:
+        return ("⛔ 请先到「② 选角设定」核对并**确认**选角设定（必须满足项、反串/兼角、档期），再生成候选方案。",
+                "⛔ 选角设定尚未确认。")
     try:
         proposal = state.matching_engine.match_one(
             role, actor, production_settings=state.production_settings
@@ -1054,6 +1113,10 @@ def confirm_decision(state, role_name, actor_name, reason):
         state = AppState()
     if not state.casting_report or not role_name:
         return state, format_decision_table(None), gr.update(), "⚠️ 请先整理全量候选方案。"
+    if actor_name and not (reason or "").strip():
+        actor_dd = update_confirm_actors(state, role_name)
+        return (state, format_decision_table(state.casting_report), actor_dd,
+                "⚠️ 请填写确认理由（便于事后复核）；若暂不指定演员，可把人选留空。")
     ok = state.casting_report.confirm_actor(role_name, actor_name, reason.strip())
     if not ok:
         actor_dd = update_confirm_actors(state, role_name)
@@ -1093,10 +1156,13 @@ def save_project(state):
     if not state.role_cards and not state.actor_profiles:
         return None, "⚠️ 当前没有可保存的内容。"
     os.makedirs("output", exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # 秒级时间戳 + 短 UUID，避免多个会话同一秒保存时互相覆盖
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
     path = os.path.join("output", f"casting_project_{stamp}.json")
-    with open(path, "w", encoding="utf-8") as f:
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(state.to_project_dict(), f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)  # 原子替换，避免写入中途产生损坏文件
     return path, f"✅ 项目已保存：{path}"
 
 

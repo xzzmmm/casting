@@ -17,6 +17,34 @@ import json
 import re
 from typing import Optional, Dict, Any
 
+
+def _load_local_dotenv() -> None:
+    """轻量加载项目根目录 .env，不依赖 python-dotenv；不覆盖已存在的环境变量。"""
+    candidates = [
+        os.getcwd(),
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    ]
+    for base in candidates:
+        env_path = os.path.join(base, ".env")
+        if not os.path.isfile(env_path):
+            continue
+        try:
+            with open(env_path, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, value = line.partition("=")
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and key not in os.environ:
+                        os.environ[key] = value
+        except OSError:
+            continue
+
+
+_load_local_dotenv()
+
 try:
     from openai import OpenAI
     HAS_OPENAI = True
@@ -70,8 +98,18 @@ class LLMClient:
         # 配置了 Key 但客户端初始化失败的真实错误（不静默降级为演示）
         self._init_error = ""
 
-        # 尝试初始化真实客户端
-        if self.api_key and HAS_OPENAI:
+        # 只有“完全未配置 Key”才允许进入启动即演示模式
+        if not self.api_key:
+            print("[LLMClient] 未配置 LLM_API_KEY，进入 Mock 演示模式")
+            self._mock_mode = True
+            self._demo_by_default = True
+        elif not HAS_OPENAI:
+            # 配置了 Key 却缺少 openai 库：属于真实依赖缺失，明确报错，绝不静默演示
+            self._init_error = (
+                "已配置 LLM_API_KEY 但未安装 openai 库，请运行：pip install openai"
+            )
+            print(f"[LLMClient] {self._init_error}（不会回退演示数据）")
+        else:
             try:
                 kwargs = {"api_key": self.api_key}
                 if self.base_url:
@@ -82,14 +120,6 @@ class LLMClient:
                 # 配置了 Key 却无法构造客户端，属于真实配置错误，记录并在调用时报错
                 self._init_error = f"API 客户端初始化失败：{e}"
                 print(f"[LLMClient] {self._init_error}（将不会回退演示数据）")
-        else:
-            if not self.api_key:
-                print("[LLMClient] 未配置 LLM_API_KEY，进入 Mock 演示模式")
-            if not HAS_OPENAI:
-                print("[LLMClient] 未安装 openai 库，进入 Mock 演示模式")
-                print("           安装命令: pip install openai")
-            self._mock_mode = True
-            self._demo_by_default = True
 
     @property
     def is_mock_mode(self) -> bool:
