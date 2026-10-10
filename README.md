@@ -68,7 +68,10 @@ CastingNuwa/
 ├── .env.example              # 环境变量配置模板
 ├── README.md
 ├── docs/
-│   └── 项目方案.md
+│   ├── 项目方案.md
+│   ├── JOURNAL.md               # 团队贡献日志（英文，Oct 11 交付）
+│   ├── PROJECT_PLAN.md          # 后续周计划（英文）
+│   └── WEEKLY_MEETING_SUMMARY.md  # 周会纪要与群聊总结（英文）
 ├── prompts/                  # 三份核心提示词说明文档
 ├── src/
 │   ├── __init__.py
@@ -91,6 +94,37 @@ CastingNuwa/
 │   └── sample_actors.txt     # 示例演员材料（2 位演员）
 └── output/                   # 项目存档与导出目录
 ```
+
+***
+
+## Quick Start (English)
+
+Run the app locally. No API key is required; without one it starts in a clearly labeled **Demo Mode**.
+
+**Requirements:** Python 3.10–3.12 is recommended. Python 3.13 also runs the web/text flow, but the MediaPipe face/pose analysis is unavailable on 3.13 and degrades to timestamped frame sampling.
+
+```bash
+git clone https://github.com/xzzmmm/casting.git
+cd casting
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+# Full install (web + text + audio + video)
+pip install -r requirements.txt
+# Text/web-only minimal install instead:  pip install gradio openai
+
+python app.py
+```
+
+Then open <http://127.0.0.1:7860> and follow tabs ① to ⑥.
+
+- **Demo mode (no key):** every result is labeled as demo and must not be used for real casting.
+- **Real analysis:** copy `.env.example` to `.env` and fill `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` (any OpenAI-compatible API). If a configured key fails, the app raises an explicit error instead of silently showing fake data.
+- **CLI:** `python main.py --script examples/sample_script.txt --summary`
+- **Course documents:** [`docs/JOURNAL.md`](docs/JOURNAL.md), [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md), [`docs/WEEKLY_MEETING_SUMMARY.md`](docs/WEEKLY_MEETING_SUMMARY.md)
 
 ***
 
