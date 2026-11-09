@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StageMind Rehearsal Log Items",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "ts_start",
+      "ts_end",
+      "item_type",
+      "speakers",
+      "summary",
+      "decision",
+      "status",
+      "actors",
+      "tags"
+    ],
+    "properties": {
+      "ts_start": {
+        "type": "number",
+        "minimum": 0
+      },
+      "ts_end": {
+        "type": "number",
+        "minimum": 0
+      },
+      "item_type": {
+        "type": "string",
+        "enum": ["舞台", "道具", "灯光", "音效", "表演", "其他"]
+      },
+      "speakers": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1
+      },
+      "decision": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": ["已确定", "待解决"]
+      },
+      "actors": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": false
+  }
+}

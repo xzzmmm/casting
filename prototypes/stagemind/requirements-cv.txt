@@ -1,0 +1,4 @@
+# StageMind W2 CV 台位检测验证依赖（单独安装）
+#   pip install -r requirements-cv.txt
+# 会一并安装 opencv-python 等依赖；YOLOv8n-pose 权重首次运行自动下载（约 6MB）。
+ultralytics>=8.2

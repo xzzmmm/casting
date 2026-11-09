@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DramaScheduler · 智能排期</title>
+<style>
+  :root{
+    --bg:#F7F6F2; --card:#FFFFFF; --border:#E4E3DD; --text:#1A1B1C; --sub:#5B6470;
+    --primary:#1F3A5F; --accent:#3B6FA8; --accent-soft:#E8F0F8;
+    --green:#2E7D32; --green-soft:#E9F5EA; --red:#C0392B; --red-soft:#FBE9E7;
+    --orange:#D97706; --orange-soft:#FDF3E3;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Roboto','PingFang SC','Segoe UI','Microsoft YaHei',Arial,sans-serif;line-height:1.6;font-size:14px;}
+  .wrap{max-width:1020px;margin:0 auto;padding:20px 16px 60px;}
+
+  header{background:linear-gradient(135deg,#1F3A5F,#3B6FA8);border-radius:14px;padding:22px 26px;color:#fff;}
+  header h1{font-size:22px;letter-spacing:.5px;}
+  header p{font-size:13px;opacity:.9;margin-top:4px;}
+
+  .steps{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 6px;}
+  .step{font-size:12.5px;padding:6px 14px;border-radius:999px;background:var(--card);border:1px solid var(--border);color:var(--sub);}
+  .step.on{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+  .step.done{background:var(--green-soft);color:var(--green);border-color:#BFDCC2;}
+
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px;margin-top:14px;}
+  .card h2{font-size:15px;color:var(--primary);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .card h2 .no{background:var(--primary);color:#fff;border-radius:6px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;}
+
+  .drop{border:2px dashed #B9C4D2;border-radius:12px;padding:34px 20px;text-align:center;cursor:pointer;background:#FAFAF8;transition:.15s;}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft);}
+  .drop .big{font-size:15px;font-weight:600;color:var(--primary);}
+  .drop .sub{font-size:12.5px;color:var(--sub);margin-top:6px;}
+  .drop input{display:none;}
+  .fileinfo{margin-top:10px;font-size:13px;color:var(--green);font-weight:600;}
+
+  .param-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;}
+  .param-row label{font-size:13px;color:var(--sub);}
+  .param-row input[type=number]{width:90px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:14px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px;}
+  th{background:var(--primary);color:#fff;padding:8px 10px;text-align:left;font-weight:600;}
+  td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:nth-child(even) td{background:#FAFAF7;}
+
+  .btn{display:inline-block;border:none;border-radius:9px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer;color:#fff;background:var(--accent);}
+  .btn:hover{filter:brightness(1.05);}
+  .btn:disabled{background:#B9C4D2;cursor:not-allowed;}
+  .btn.green{background:var(--green);}
+  .btn.ghost{background:var(--card);color:var(--primary);border:1px solid var(--accent);}
+
+  .stat-grid{display:flex;gap:10px;flex-wrap:wrap;}
+  .stat{flex:1 1 130px;min-width:0;background:var(--accent-soft);border-radius:10px;padding:12px;text-align:center;}
+  .stat .v{font-size:19px;font-weight:700;color:var(--primary);}
+  .stat .k{font-size:11.5px;color:var(--sub);margin-top:2px;}
+  .stat.ok{background:var(--green-soft);} .stat.ok .v{color:var(--green);}
+  .stat.warn{background:var(--red-soft);} .stat.warn .v{color:var(--red);}
+
+  .calendar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .cal-day{flex:1 1 118px;min-width:0;border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden;}
+  .cal-day .dhead{background:var(--accent-soft);color:var(--primary);font-weight:700;font-size:12.5px;text-align:center;padding:6px 4px;}
+  .cal-slot{min-height:44px;padding:5px 6px;border-top:1px solid #F0EFEA;font-size:11px;line-height:1.4;}
+  .cal-slot .st{color:var(--sub);font-size:10.5px;}
+  .task-block{border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:5px;padding:3px 6px;margin-top:3px;font-weight:600;color:var(--primary);}
+  .task-block small{display:block;font-weight:400;color:var(--sub);}
+
+  .progress-row{display:flex;align-items:center;gap:8px;margin-top:7px;}
+  .progress-row .dl{flex:0 0 44px;font-size:12px;color:var(--primary);font-weight:600;}
+  .progress-row .bar{flex:1;height:16px;background:#EDF0F5;border-radius:8px;overflow:hidden;}
+  .progress-row .fill{height:100%;background:linear-gradient(90deg,#3B6FA8,#5B8FC0);border-radius:8px;transition:width .4s;}
+  .progress-row .pv{flex:0 0 90px;font-size:11.5px;color:var(--sub);text-align:right;}
+
+  .err{background:var(--red-soft);border-left:4px solid var(--red);border-radius:8px;padding:12px 16px;font-size:13px;margin-top:12px;color:#7F1D1D;}
+  .hint{background:var(--orange-soft);border-left:4px solid var(--orange);border-radius:8px;padding:12px 16px;font-size:13px;margin-top:12px;color:#92400E;}
+  .hidden{display:none;}
+  .loading{color:var(--accent);font-weight:600;margin-top:12px;}
+  footer{margin-top:28px;text-align:center;color:var(--sub);font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>DramaScheduler · 智能排期</h1>
+    <p>上传 NA 表（模板 v2）→ 自动生成零冲突排练日程 · CP-SAT 约束求解</p>
+  </header>
+
+  <div class="steps">
+    <span class="step on" id="st1">① 上传 NA 表</span>
+    <span class="step" id="st2">② 确认任务配置</span>
+    <span class="step" id="st3">③ 查看日程</span>
+  </div>
+
+  <!-- 步骤 1：上传 -->
+  <div class="card" id="sec-upload">
+    <h2><span class="no">1</span>上传 NA 表（Excel / CSV）</h2>
+    <div class="drop" id="drop">
+      <div class="big">点击选择文件，或拖拽到此处</div>
+      <div class="sub">支持 .xlsx / .xls / .csv，需为模板 v2 结构（A–E 个人信息 + 时段矩阵）</div>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv">
+    </div>
+    <div class="fileinfo hidden" id="fileinfo"></div>
+    <div class="param-row">
+      <label for="maxdur">每日排练时长上限（小时）</label>
+      <input type="number" id="maxdur" value="4" min="1" max="12" step="0.5">
+      <button class="btn" id="btn-run" disabled>开始排期</button>
+    </div>
+  </div>
+
+  <!-- 步骤 2：任务配置 -->
+  <div class="card hidden" id="sec-tasks">
+    <h2><span class="no">2</span>排练任务配置（按"参与任务"列自动派生演员）</h2>
+    <table id="task-table">
+      <thead><tr><th>任务</th><th>时长(h)</th><th>次数</th><th>优先级</th><th>参与演员</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn ghost" id="btn-back">← 换文件</button>
+      <button class="btn green" id="btn-confirm">确认并排期 →</button>
+    </div>
+  </div>
+
+  <!-- 步骤 3：结果 -->
+  <div class="card hidden" id="sec-result">
+    <h2><span class="no">3</span>排期结果</h2>
+    <div id="result-body"></div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="btn ghost" id="btn-again">重新排期</button>
+      <button class="btn green hidden" id="btn-export">导出日程 CSV</button>
+    </div>
+  </div>
+
+  <footer>DramaScheduler · 莱恩戏剧社数据科学课程项目 · 原型演示</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var fileData = null, fileName = "", resultJson = null, membersPreview = null;
+
+  // ---- 上传交互 ----
+  var drop = $("drop"), fileInput = $("file");
+  drop.addEventListener("click", function(){ fileInput.click(); });
+  drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+  drop.addEventListener("drop", function(e){
+    e.preventDefault(); drop.classList.remove("over");
+    if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", function(){
+    if(fileInput.files.length) handleFile(fileInput.files[0]);
+  });
+
+  function handleFile(f){
+    var okName = /\.(xlsx|xls|csv)$/i.test(f.name);
+    if(!okName){ alert("仅支持 .xlsx / .xls / .csv 文件"); return; }
+    fileData = f; fileName = f.name;
+    $("fileinfo").textContent = "已选择：" + f.name + "（" + (f.size/1024).toFixed(1) + " KB）";
+    $("fileinfo").classList.remove("hidden");
+    $("btn-run").disabled = false;
+    $("st1").classList.add("done");
+    $("st2").classList.remove("on"); $("st3").classList.remove("on");
+    $("sec-result").classList.add("hidden");
+  }
+
+  // ---- 第一步：上传解析（仅获取解析信息，不求解）----
+  $("btn-run").addEventListener("click", function(){
+    if(!fileData) return;
+    $("btn-run").disabled = true;
+    $("btn-run").textContent = "解析中…";
+    var fd = new FormData();
+    fd.append("file", fileData);
+    fetch("/api/schedule", { method:"POST", body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        $("btn-run").disabled = false; $("btn-run").textContent = "开始排期";
+        if(!res.ok){
+          showError("解析失败：" + (res.error || "未知错误"));
+          return;
+        }
+        resultJson = res;   // 暂存（已含求解结果，此处直接展示步骤3）
+        renderTasks(res.parse.tasks, res.parse);
+        $("st1").classList.remove("done"); $("st1").classList.add("on");
+        $("st2").classList.add("on");
+        $("sec-tasks").classList.remove("hidden");
+        $("sec-upload").classList.add("hidden");
+      })
+      .catch(function(e){ $("btn-run").disabled = false; $("btn-run").textContent = "开始排期"; showError("请求失败：" + e); });
+  });
+
+  // ---- 步骤 2：任务配置确认（携带可调参数重新求解）----
+  $("btn-confirm").addEventListener("click", function(){ runSchedule(true); });
+  $("btn-back").addEventListener("click", function(){
+    $("sec-tasks").classList.add("hidden");
+    $("sec-upload").classList.remove("hidden");
+    $("st2").classList.remove("on");
+    $("st1").classList.add("on");
+  });
+
+  function runSchedule(fromTasks){
+    if(!fileData) return;
+    $("btn-confirm").disabled = true;
+    $("btn-confirm").textContent = "排期中…";
+    var tasksJson = collectTasks();
+    var fd = new FormData();
+    fd.append("file", fileData);
+    fd.append("max_day_dur", $("maxdur").value || "4");
+    fd.append("tasks_json", JSON.stringify(tasksJson));
+    fetch("/api/schedule", { method:"POST", body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        $("btn-confirm").disabled = false; $("btn-confirm").textContent = "确认并排期 →";
+        if(!res.ok){ showError("排期失败：" + (res.error || "未知错误")); return; }
+        resultJson = res;
+        $("st2").classList.remove("on"); $("st2").classList.add("done");
+        $("st3").classList.add("on");
+        $("sec-tasks").classList.add("hidden");
+        $("sec-result").classList.remove("hidden");
+        renderResult(res);
+      })
+      .catch(function(e){ $("btn-confirm").disabled = false; $("btn-confirm").textContent = "确认并排期 →"; showError("请求失败：" + e); });
+  }
+
+  function collectTasks(){
+    var rows = document.querySelectorAll("#task-table tbody tr"), out = [];
+    rows.forEach(function(tr){
+      var id = tr.getAttribute("data-id"), name = tr.getAttribute("data-name");
+      var dur = parseFloat(tr.querySelector(".inp-dur").value) || 2;
+      var req = parseInt(tr.querySelector(".inp-req").value, 10) || 1;
+      var prio = parseInt(tr.querySelector(".inp-prio").value, 10) || 2;
+      var actors = (tr.getAttribute("data-actors")||"").split(",").filter(function(x){return x;});
+      var tags = (tr.getAttribute("data-tags")||"").split(",").filter(function(x){return x;});
+      var soft = (tr.getAttribute("data-soft")||"").split(",").filter(function(x){return x;});
+      out.push({ id:id, name:name, dur:dur, req:req, prio:prio, actors:actors, tags:tags, soft_actors:soft });
+    });
+    return out;
+  }
+
+  function renderTasks(tasks, parse){
+    var tb = document.querySelector("#task-table tbody");
+    tb.innerHTML = "";
+    tasks.forEach(function(t){
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-id", t.id);
+      tr.setAttribute("data-name", t.name);
+      tr.setAttribute("data-actors", (t.actors||[]).join(","));
+      tr.setAttribute("data-tags", (t.tags||[]).join(","));
+      tr.setAttribute("data-soft", (t.soft||[]).join(","));
+      var actorTxt = (t.actors||[]).join("、") || "<span style='color:#C0392B'>未匹配到演员</span>";
+      var softTxt = (t.soft && t.soft.length) ? " · <span style='color:#7A8B99'>软参与 " + t.soft.length + " 人</span>" : "";
+      tr.innerHTML =
+        "<td><b>" + t.name + "</b></td>" +
+        "<td><input class='inp-dur' type='number' value='" + t.dur + "' min='0.5' max='6' step='0.5' style='width:56px;padding:5px;border:1px solid #E4E3DD;border-radius:6px;'></td>" +
+        "<td><input class='inp-req' type='number' value='" + t.req + "' min='1' max='20' style='width:56px;padding:5px;border:1px solid #E4E3DD;border-radius:6px;'></td>" +
+        "<td><input class='inp-prio' type='number' value='" + t.prio + "' min='1' max='3' style='width:56px;padding:5px;border:1px solid #E4E3DD;border-radius:6px;'></td>" +
+        "<td style='font-size:11.5px;color:#5B6470;'>" + actorTxt + softTxt + "</td>";
+      tb.appendChild(tr);
+    });
+    var info = $("sec-tasks").querySelector(".parse-info");
+    if(info) info.remove();
+    var p = document.createElement("div");
+    p.className = "parse-info";
+    p.style.cssText = "font-size:12px;color:#5B6470;margin-top:10px;";
+    var modeTxt = parse.mode === "real" ? "真实NA表（日期×时段）" : "模板v2";
+    var extra = (parse.partial_members ? " · 部分出席 " + parse.partial_members + " 人按可用处理" : "");
+    p.innerHTML = "已解析：" + modeTxt + " · 成员 " + parse.members_count + " 人 · 时段 " + parse.time_cols + " 个 · NA " + parse.na_count + " 处" + extra + "（成员不可用会自动避开）";
+    // 真实剧场一天可早午晚连排，自动采用建议的每日时长上限
+    if(parse.mode === "real" && parse.suggest_day_dur && parseFloat($("maxdur").value || "4") === 4){
+      $("maxdur").value = parse.suggest_day_dur;
+      $("maxdur").title = "已按真实排练习惯建议为 " + parse.suggest_day_dur + " 小时（可自行修改）";
+    }
+    $("sec-tasks").insertBefore(p, $("sec-tasks").querySelector("div"));
+  }
+
+  // ---- 步骤 3：渲染结果 ----
+  var TASK_COLORS = {"R1":"#3B6FA8","R2":"#2FA8A0","R3":"#D97706","R4":"#2E7D32","R5":"#7A8B99"};
+
+  function renderResult(res){
+    var html = "";
+    // 状态卡
+    if(res.ok){
+      var conflictCls = res.conflicts && res.conflicts.length ? "warn" : "ok";
+      html += '<div class="stat-grid">'
+        + '<div class="stat"><div class="v">' + res.parse.members_count + '</div><div class="k">成员数</div></div>'
+        + '<div class="stat"><div class="v">' + res.parse.na_count + '</div><div class="k">NA 记录（自动避开）</div></div>'
+        + '<div class="stat"><div class="v">' + res.schedule.length + ' 场</div><div class="k">排练总量</div></div>'
+        + '<div class="stat ' + conflictCls + '"><div class="v">' + (res.conflicts ? res.conflicts.length : 0) + '</div><div class="k">冲突数</div></div>'
+        + '<div class="stat ok"><div class="v">' + res.time_sec + 's</div><div class="k">求解耗时</div></div>'
+        + '<div class="stat ok"><div class="v">' + res.max_end_name + '</div><div class="k">完成周期</div></div>'
+        + '</div>';
+    } else {
+      html += '<div class="stat-grid"><div class="stat warn"><div class="v">不可行</div><div class="k">' + (res.status||"INFEASIBLE") + '</div></div></div>';
+    }
+
+    // 无解提示
+    if(!res.ok && res.infeasible_hint){
+      var h = res.infeasible_hint;
+      if(h.type === "not_enough_common_slots"){
+        var lines = (h.detail||[]).map(function(x){
+          return '「' + x.task + '」必到成员共同空闲仅 ' + x.available + ' 个时段（需要 ' + x.req + '）：' + (x.slots.join("、") || "无");
+        }).join("<br>");
+        html += '<div class="hint">排不开的根因：核心成员共同空闲时段不够。<br>' + lines + '<br>建议：减少该任务排练次数、降低必到人数（在任务配置中调整），或先补齐成员的 NA 表。</div>';
+      } else {
+        html += '<div class="hint">诊断建议：将每日时长上限放宽到 ' + h.suggest + ' 小时即可排开；也可检查关键人物（导演/主演）的 NA 时段是否过多。</div>';
+      }
+    }
+
+    // 日程（通用：按"天"分组 × 该时段集渲染；模板 v2 为 周一..周日×早午晚，真实表为 日期×时段）
+    if(res.ok){
+      var dayOrder = (res.progress||[]).map(function(p){ return p.day; });
+      var parts = [];
+      var grid = {};
+      (res.schedule||[]).forEach(function(r){
+        if(parts.indexOf(r.slot_part) < 0) parts.push(r.slot_part);
+        var key = r.day + "_" + r.slot_part;
+        if(!grid[key]) grid[key] = [];
+        grid[key].push(r);
+      });
+      html += '<div style="font-size:13px;font-weight:700;color:#1F3A5F;margin:16px 0 8px;">排练日历（' + dayOrder.length + ' 天 × ' + parts.length + ' 时段）</div>';
+      html += '<div class="calendar">';
+      dayOrder.forEach(function(d){
+        html += '<div class="cal-day"><div class="dhead">' + d + '</div>';
+        parts.forEach(function(pp){
+          var rs = grid[d + "_" + pp] || [];
+          html += '<div class="cal-slot"><span class="st">' + pp + '</span>';
+          if(!rs.length) html += '<span style="font-size:10px;color:#C9C7BD;">—</span>';
+          rs.forEach(function(r){
+            var color = TASK_COLORS[r.task_id] || "#3B6FA8";
+            html += '<div class="task-block" style="border-left-color:' + color + ';background:rgba(59,111,168,0.10);">'
+                 + r.task_name + '<small>' + r.dur + 'h · ' + (r.actors||[]).length + '人</small></div>';
+          });
+          html += '</div>';
+        });
+        html += '</div>';
+      });
+      html += '</div>';
+
+      // 进度
+      html += '<div style="font-size:13px;font-weight:700;color:#1F3A5F;margin:16px 0 8px;">每日进度推进（总需求 ' + res.total_req + ' 场）</div>';
+      (res.progress||[]).forEach(function(p){
+        html += '<div class="progress-row"><div class="dl">' + p.day + '</div>'
+             + '<div class="bar"><div class="fill" style="width:' + Math.max(p.pct, 2) + '%;"></div></div>'
+             + '<div class="pv">' + p.count + '场 · 累计' + p.pct + '%</div></div>';
+      });
+
+      // 每人统计
+      html += '<div style="font-size:13px;font-weight:700;color:#1F3A5F;margin:16px 0 8px;">每人排练次数</div>';
+      var names = Object.keys(res.stats||{});
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      names.forEach(function(n){
+        html += '<span style="background:#fff;border:1px solid #E4E3DD;border-radius:8px;padding:5px 10px;font-size:12px;">' + n + ' <b style="color:#3B6FA8;">' + res.stats[n] + '</b>次</span>';
+      });
+      html += '</div>';
+
+      // 冲突展示（理论为 0）
+      if(res.conflicts && res.conflicts.length){
+        html += '<div class="err">检测到 ' + res.conflicts.length + ' 处冲突：' + JSON.stringify(res.conflicts) + '</div>';
+      }
+      $("btn-export").classList.remove("hidden");
+    } else {
+      $("btn-export").classList.add("hidden");
+    }
+    $("result-body").innerHTML = html;
+  }
+
+  function showError(msg){
+    var d = document.createElement("div");
+    d.className = "err"; d.textContent = msg;
+    $("sec-upload").appendChild(d);
+    setTimeout(function(){ d.remove(); }, 8000);
+  }
+
+  // ---- 导出 CSV（走后端文件下载，客户端内置浏览器不拦截）----
+  $("btn-export").addEventListener("click", function(){
+    if(!resultJson || !resultJson.ok){ alert("暂无排期结果"); return; }
+    var a = document.createElement("a");
+    a.href = "/api/export";
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
+
+  $("btn-again").addEventListener("click", function(){
+    $("sec-result").classList.add("hidden");
+    $("st3").classList.remove("on");
+    $("sec-upload").classList.remove("hidden");
+    $("st1").classList.add("on");
+    $("btn-run").disabled = !fileData;
+  });
+})();
+</script>
+</body>
+</html>

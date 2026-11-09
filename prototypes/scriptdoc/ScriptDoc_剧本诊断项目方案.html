@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScriptDoc 剧本诊断助手 · 项目方案</title>
+<style>
+  :root{
+    --bg:#F6F3EC; --card:#FFFFFF; --ink:#201A30; --sub:#6A6376;
+    --accent:#6C4AB6; --accent-soft:#EDE6F8; --accent-deep:#4A2E8A;
+    --gold:#C9A227; --gold-soft:#FBF3DC; --line:#E7E1D6;
+    --ok:#2F7D46; --warn:#B45309; --bad:#B0302E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.65;font-size:15px;}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 28px 64px;}
+
+  /* header */
+  .hero{background:linear-gradient(135deg,#241A40 0%,#4A2E8A 55%,#6C4AB6 100%);border-radius:18px;padding:40px 42px;color:#fff;position:relative;overflow:hidden;}
+  .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:260px;height:260px;border-radius:50%;background:rgba(201,162,39,0.16);}
+  .hero .tag{display:inline-block;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.25);padding:4px 14px;border-radius:999px;font-size:13px;letter-spacing:1px;}
+  .hero h1{font-size:34px;font-weight:700;margin:16px 0 8px;letter-spacing:1px;}
+  .hero h1 span{color:#E9C767;}
+  .hero .sub{font-size:15px;color:rgba(255,255,255,0.85);max-width:760px;}
+  .hero .meta{margin-top:22px;display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:rgba(255,255,255,0.75);}
+  .hero .meta b{color:#fff;font-weight:600;}
+
+  /* section */
+  section{margin-top:40px;}
+  .sec-head{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:22px;}
+  .sec-head .no{font-size:13px;font-weight:700;color:#fff;background:var(--accent);border-radius:8px;padding:3px 10px;letter-spacing:1px;}
+  .sec-head h2{font-size:23px;font-weight:700;letter-spacing:1px;}
+  .sec-head .en{font-size:12px;color:var(--sub);letter-spacing:1px;}
+
+  h3{font-size:17px;margin:26px 0 12px;color:var(--accent-deep);}
+  p{margin-bottom:10px;}
+  .lead{font-size:15.5px;color:#3A3348;}
+  .note{font-size:13px;color:var(--sub);}
+
+  /* cards */
+  .cards{display:flex;gap:16px;flex-wrap:wrap;}
+  .card{flex:1 1 200px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;min-width:0;}
+  .card .k{font-size:12.5px;color:var(--sub);margin-bottom:6px;letter-spacing:1px;}
+  .card .v{font-size:15px;font-weight:600;color:var(--ink);line-height:1.55;}
+  .card.hl{background:linear-gradient(160deg,#F4EFFB,var(--accent-soft));border-color:#D8C8F2;}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px;}
+  th{background:#F0EBFB;color:var(--accent-deep);text-align:left;padding:10px 14px;font-weight:600;border-bottom:1px solid var(--line);}
+  td{padding:10px 14px;border-bottom:1px solid #F0ECE2;vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  td.c{text-align:center;}
+  .tbl-wrap{overflow-x:auto;border-radius:12px;}
+
+  /* badges */
+  .b{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;}
+  .b-bad{background:#FBE9E8;color:var(--bad);}
+  .b-mid{background:#FDF1DC;color:var(--warn);}
+  .b-ok{background:#E4F3E8;color:var(--ok);}
+  .b-purple{background:var(--accent-soft);color:var(--accent-deep);}
+
+  /* figure */
+  figure{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px 14px;}
+  figure figcaption{font-size:13px;color:var(--sub);margin-top:10px;text-align:center;}
+  .fig-title{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px;text-align:center;letter-spacing:1px;}
+  svg{display:block;width:100%;height:auto;}
+
+  /* lists */
+  ul,ol{margin:6px 0 12px 22px;}
+  li{margin-bottom:6px;}
+  .grid2{display:flex;gap:18px;flex-wrap:wrap;}
+  .grid2>div{flex:1 1 320px;min-width:0;}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;}
+  .box h4{font-size:15.5px;color:var(--accent-deep);margin-bottom:8px;}
+
+  .mile{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;}
+  .mile .m{flex:1 1 220px;background:var(--gold-soft);border:1px solid #EBD9A0;border-radius:12px;padding:12px 16px;}
+  .mile .m b{color:#8A6D12;font-size:14px;}
+  .mile .m div{font-size:13px;color:#6B5A1E;margin-top:4px;}
+
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--sub);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HERO ============ -->
+  <div class="hero">
+    <span class="tag">莱恩戏剧社 × 数据科学课程项目 · 项目方案 V1.3</span>
+    <h1>ScriptDoc <span>剧本诊断助手</span></h1>
+    <div class="sub">把「台词尴尬、情节不合逻辑、缺张力」这类主观感受，变成<strong>可定位、可量化、可修改</strong>的结构化诊断报告——让非专业编剧知道「哪里不对、为什么不对、怎么改」。</div>
+    <div class="meta">
+      <span>痛点来源：<b>社团演讲 · 社团创作六大难题</b></span>
+      <span>项目周期：<b>6 周 · 4 个里程碑</b></span>
+      <span>文档日期：<b>2026-09-07</b></span>
+      <span>交付形态：<b>Web 应用</b></span>
+    </div>
+  </div>
+
+  <!-- ============ 01 概述 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">01</span><h2>项目概述</h2><span class="en">OVERVIEW</span></div>
+    <p class="lead">剧本是戏剧的根。但校园剧社的剧本修改长期依赖「读出来感觉不对」——没有人能指出<strong>具体是哪一句台词、哪一个转折、哪一条人物线出了问题</strong>。ScriptDoc 用「统计特征 + 规则引擎 + 大模型结构化分析」的混合架构，为每一部剧本生成四维诊断报告（结构 / 台词 / 人物 / 逻辑），每个问题都能定位到场景与行号，并给出可执行的修改建议。</p>
+
+    <div class="cards" style="margin-top:18px;">
+      <div class="card hl"><div class="k">一句话定位</div><div class="v">面向校园戏剧社的智能剧本诊断 Web 工具：诊断为主、不改写、可定位、可量化</div></div>
+      <div class="card"><div class="k">目标用户</div><div class="v">编剧（初稿找问题）、导演（排练前过硬伤）、副导演 ASM（版本与反馈管理）</div></div>
+      <div class="card"><div class="k">核心场景</div><div class="v">初稿完成 → 排练前诊断 → 迭代修改 → 多版本对比，全程追踪「改没改好」</div></div>
+      <div class="card"><div class="k">技术亮点</div><div class="v">非「套壳 ChatGPT」：统计特征与规则引擎承担可复算部分，LLM 只做结构化判断，结果可追溯</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 02 问题定义 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">02</span><h2>问题定义</h2><span class="en">PROBLEM DEFINITION</span></div>
+
+    <h3>2.1 痛点拆解：把主观感受转成可检测的信号</h3>
+    <p class="note">原则：每一种「感觉不对」，都必须映射为至少一种可复现的检测方法，否则不进入产品范围。</p>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:15%;">主观抱怨</th><th style="width:38%;">可检测的信号</th><th>检测方法</th></tr>
+      <tr><td><b>台词尴尬</b></td><td>口语化程度低、书面语过重；句长分布不自然；独白式对白（一人连续占多轮）；信息密度失衡</td><td>语言统计特征（句长、口语标记词、轮次分布）+ LLM 自然度评分（锚定具体台词句）</td></tr>
+      <tr><td><b>情节不合逻辑</b></td><td>因果链断裂；行为动机缺失；伏笔未回收；时间 / 空间矛盾</td><td>情节因果链抽取 + 规则引擎伏笔—回收匹配 + LLM 一致性校验</td></tr>
+      <tr><td><b>缺张力</b></td><td>冲突密度低；目标—障碍链薄弱；转折点稀疏；高潮前置或缺失</td><td>场景张力曲线：按节拍标注「目标 / 障碍 / 转折 / 高潮」密度，输出曲线与拐点</td></tr>
+      <tr><td><b>人物不像</b></td><td>同一角色的台词风格漂移；情绪反应前后矛盾；人物说话「一个腔调」</td><td>逐角色档案抽取（性格标签 / 口头禅 / 语域）→ 台词风格向量两两对比，超阈值报警</td></tr>
+      <tr><td><b>节奏拖沓</b></td><td>信息重复；无效对话轮次过多；过渡场景冗长</td><td>对话轮次统计 + 新信息占比检测（单轮是否推进剧情 / 人物 / 信息）</td></tr>
+    </table>
+    </div>
+
+    <h3>2.2 使用场景与角色</h3>
+    <div class="grid2">
+      <div>
+        <div class="box"><h4>编剧</h4><p>初稿写完，面对 60 页剧本不知道从哪改。需要：<strong>问题清单 + 定位 + 建议</strong>，按严重度排序，一次改一批。</p></div>
+        <div class="box"><h4>导演</h4><p>排练前快速过一遍剧本，找「会当场崩掉」的硬伤。需要：<strong>高优先级问题摘要 + 张力曲线</strong>判断全场节奏。</p></div>
+      </div>
+      <div>
+        <div class="box"><h4>副导演（ASM）</h4><p>管理多个修改版本，跟踪修改有没有生效。需要：<strong>版本对比 + 分数变化</strong>，向团队交代改动依据。</p></div>
+        <div class="box"><h4>演员（可选扩展）</h4><p>拿到角色档案卡，理解人物动机与语气。需要：<strong>人物档案页</strong>作为读本参考。</p></div>
+      </div>
+    </div>
+
+    <h3>2.3 目标与非目标</h3>
+    <div class="grid2">
+      <div class="box" style="border-top:3px solid var(--ok);">
+        <h4>目标（做）</h4>
+        <ul>
+          <li>30 分钟内产出一份四维诊断报告，覆盖结构 / 台词 / 人物 / 逻辑</li>
+          <li>每个问题定位到具体场景、台词与行号，可一键跳转原文</li>
+          <li>每条诊断给出「问题证据 + 修改建议」，不只说「不好」</li>
+          <li>支持多版本对比，用分数变化证明修改有效</li>
+        </ul>
+      </div>
+      <div class="box" style="border-top:3px solid var(--bad);">
+        <h4>非目标（明确不做）</h4>
+        <ul>
+          <li>不替编剧写剧本——只诊断与建议，创作权在人</li>
+          <li>不做语音 / 舞台调度 / 排期——那是排期与排练记录方向的范围</li>
+          <li>不评判艺术价值与审美高低——只做可复现的技术性诊断</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 03 技术架构 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">03</span><h2>技术架构</h2><span class="en">TECHNICAL ARCHITECTURE</span></div>
+    <p class="lead">五层架构：<strong>可复算的用规则和统计做，需要语义理解的交给 LLM 做结构化输出</strong>——两者交叉校验，避免「大模型说什么就是什么」。</p>
+
+    <figure>
+      <div class="fig-title">系统分层架构（示意）</div>
+      <svg viewBox="0 0 920 448" role="img" aria-label="ScriptDoc 五层系统架构图">
+        <!-- band 1 用户层 -->
+        <rect x="10" y="10" width="900" height="66" rx="12" fill="#F4F0FA" stroke="#D8C8F2"/>
+        <text x="26" y="32" font-size="12.5" font-weight="700" fill="#4A2E8A">用户层</text>
+        <rect x="150" y="18" width="220" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="260" y="37" font-size="13.5" text-anchor="middle" fill="#201A30">编剧</text>
+        <text x="260" y="53" font-size="11" text-anchor="middle" fill="#6A6376">初稿 · 迭代修改</text>
+        <rect x="390" y="18" width="220" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="500" y="37" font-size="13.5" text-anchor="middle" fill="#201A30">导演</text>
+        <text x="500" y="53" font-size="11" text-anchor="middle" fill="#6A6376">排练前 · 硬伤速览</text>
+        <rect x="630" y="18" width="220" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="740" y="37" font-size="13.5" text-anchor="middle" fill="#201A30">副导演 ASM</text>
+        <text x="740" y="53" font-size="11" text-anchor="middle" fill="#6A6376">版本 · 反馈管理</text>
+
+        <line x1="500" y1="76" x2="500" y2="96" stroke="#9C86D6" stroke-width="2" stroke-dasharray="5,4"/>
+
+        <!-- band 2 前端 -->
+        <rect x="10" y="96" width="900" height="66" rx="12" fill="#F4F0FA" stroke="#D8C8F2"/>
+        <text x="26" y="118" font-size="12.5" font-weight="700" fill="#4A2E8A">前端层</text>
+        <rect x="150" y="104" width="220" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="260" y="123" font-size="13" text-anchor="middle" fill="#201A30">剧本编辑器</text>
+        <text x="260" y="139" font-size="11" text-anchor="middle" fill="#6A6376">CodeMirror 6 · 行号定位</text>
+        <rect x="390" y="104" width="220" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="500" y="123" font-size="13" text-anchor="middle" fill="#201A30">诊断报告页</text>
+        <text x="500" y="139" font-size="11" text-anchor="middle" fill="#6A6376">问题卡 · 跳转原文</text>
+        <rect x="630" y="104" width="220" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="740" y="123" font-size="13" text-anchor="middle" fill="#201A30">可视化组件</text>
+        <text x="740" y="139" font-size="11" text-anchor="middle" fill="#6A6376">ECharts · 张力曲线 / 雷达图</text>
+
+        <line x1="500" y1="162" x2="500" y2="182" stroke="#9C86D6" stroke-width="2" stroke-dasharray="5,4"/>
+
+        <!-- band 3 接口层 -->
+        <rect x="10" y="182" width="900" height="56" rx="12" fill="#F4F0FA" stroke="#D8C8F2"/>
+        <text x="26" y="204" font-size="12.5" font-weight="700" fill="#4A2E8A">接口层</text>
+        <rect x="150" y="188" width="340" height="40" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="320" y="207" font-size="13" text-anchor="middle" fill="#201A30">REST API（FastAPI）</text>
+        <text x="320" y="222" font-size="11" text-anchor="middle" fill="#6A6376">上传 / 分析 / 报告 / 版本</text>
+        <rect x="510" y="188" width="340" height="40" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="680" y="207" font-size="13" text-anchor="middle" fill="#201A30">WebSocket 进度推送</text>
+        <text x="680" y="222" font-size="11" text-anchor="middle" fill="#6A6376">长任务分步进度 · 前端实时反馈</text>
+
+        <line x1="500" y1="238" x2="500" y2="258" stroke="#9C86D6" stroke-width="2" stroke-dasharray="5,4"/>
+
+        <!-- band 4 分析引擎 -->
+        <rect x="10" y="258" width="900" height="86" rx="12" fill="#F4F0FA" stroke="#D8C8F2"/>
+        <text x="26" y="280" font-size="12.5" font-weight="700" fill="#4A2E8A">分析引擎层</text>
+        <rect x="150" y="270" width="150" height="60" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="225" y="292" font-size="12.5" text-anchor="middle" fill="#201A30">预处理</text>
+        <text x="225" y="309" font-size="10.5" text-anchor="middle" fill="#6A6376">场景切分 · 台词抽取</text>
+        <text x="225" y="322" font-size="10.5" text-anchor="middle" fill="#6A6376">行号索引</text>
+        <polygon points="310,300 322,300 316,292" fill="#9C86D6"/>
+        <rect x="330" y="270" width="150" height="60" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="405" y="292" font-size="12.5" text-anchor="middle" fill="#201A30">统计特征</text>
+        <text x="405" y="309" font-size="10.5" text-anchor="middle" fill="#6A6376">句长 / 轮次 / 词频</text>
+        <text x="405" y="322" font-size="10.5" text-anchor="middle" fill="#6A6376">信息密度</text>
+        <polygon points="490,300 502,300 496,292" fill="#9C86D6"/>
+        <rect x="510" y="270" width="150" height="60" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="585" y="292" font-size="12.5" text-anchor="middle" fill="#201A30">规则引擎</text>
+        <text x="585" y="309" font-size="10.5" text-anchor="middle" fill="#6A6376">伏笔—回收匹配</text>
+        <text x="585" y="322" font-size="10.5" text-anchor="middle" fill="#6A6376">人称 / 时间线校验</text>
+        <polygon points="670,300 682,300 676,292" fill="#9C86D6"/>
+        <rect x="690" y="270" width="150" height="60" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="765" y="292" font-size="12.5" text-anchor="middle" fill="#201A30">LLM 分析</text>
+        <text x="765" y="309" font-size="10.5" text-anchor="middle" fill="#6A6376">结构 / 台词 / 人物 / 逻辑</text>
+        <text x="765" y="322" font-size="10.5" text-anchor="middle" fill="#6A6376">四子任务并行 · JSON 输出</text>
+
+        <line x1="500" y1="344" x2="500" y2="364" stroke="#9C86D6" stroke-width="2" stroke-dasharray="5,4"/>
+
+        <!-- band 5 模型与数据 -->
+        <rect x="10" y="364" width="900" height="66" rx="12" fill="#F4F0FA" stroke="#D8C8F2"/>
+        <text x="26" y="386" font-size="12.5" font-weight="700" fill="#4A2E8A">模型与数据层</text>
+        <rect x="150" y="372" width="340" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="320" y="391" font-size="13" text-anchor="middle" fill="#201A30">LLM API（结构化输出）</text>
+        <text x="320" y="407" font-size="11" text-anchor="middle" fill="#6A6376">JSON Schema · function calling · 结果可解析</text>
+        <rect x="510" y="372" width="340" height="44" rx="9" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="680" y="391" font-size="13" text-anchor="middle" fill="#201A30">SQLite</text>
+        <text x="680" y="407" font-size="11" text-anchor="middle" fill="#6A6376">剧本版本 · 报告缓存 · 反馈标注</text>
+      </svg>
+      <figcaption>图 1 · ScriptDoc 五层架构：虚线为请求/数据流向，分析引擎内部为流水线（预处理 → 统计与规则 → LLM → 聚合）</figcaption>
+    </figure>
+
+    <h3>3.1 技术选型</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:16%;">层级</th><th style="width:30%;">选型</th><th>选择理由</th></tr>
+      <tr><td>前端</td><td>React + Vite + CodeMirror 6</td><td>编辑器体验接近专业写作工具；组件生态成熟，迭代快</td></tr>
+      <tr><td>可视化</td><td>ECharts</td><td>张力曲线、雷达图、热力图开箱即用，答辩演示效果好</td></tr>
+      <tr><td>后端</td><td>FastAPI（Python）</td><td>异步支持长任务；自动生成 API 文档；与 LLM SDK 同语言、好调试</td></tr>
+      <tr><td>模型层</td><td>LLM API（JSON Schema 结构化输出）</td><td>让分析结果<strong>可定位、可复算、可进数据库</strong>，而非一段自由文本</td></tr>
+      <tr><td>存储</td><td>SQLite</td><td>单机部署零成本，答辩演示不依赖外部服务</td></tr>
+      <tr><td>部署</td><td>本机 Docker / 单进程</td><td>演示环境简单可控，避免答辩时环境翻车</td></tr>
+    </table>
+    </div>
+    <p class="note">说明：LLM 只承担「需要语义理解」的子任务（自然度判断、因果校验、档案抽取）；可枚举的检查（人称一致、伏笔匹配、句长统计）全部由本地规则与统计完成——这是本项目区别于「套壳大模型」的关键论证点。</p>
+  </section>
+
+  <!-- ============ 04 数据流程 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">04</span><h2>数据流程</h2><span class="en">DATA FLOW</span></div>
+    <p class="lead">一次完整的诊断是「输入 → 结构化 → 并行分析 → 聚合 → 报告 → 反馈闭环」六步流水线，其中分析环节四个子任务并行执行，长任务通过 WebSocket 实时回报进度。</p>
+
+    <figure>
+      <div class="fig-title">诊断流水线（示意）</div>
+      <svg viewBox="0 0 920 250" role="img" aria-label="ScriptDoc 数据流程流水线">
+        <rect x="14" y="40" width="138" height="96" rx="10" fill="#EDE6F8" stroke="#6C4AB6"/>
+        <text x="83" y="68" font-size="13.5" font-weight="700" text-anchor="middle" fill="#4A2E8A">① 剧本输入</text>
+        <text x="83" y="90" font-size="10.5" text-anchor="middle" fill="#4A2E8A">粘贴文本</text>
+        <text x="83" y="105" text-anchor="middle" font-size="10.5" fill="#4A2E8A">上传 .txt/.docx</text>
+        <text x="83" y="120" text-anchor="middle" font-size="10.5" fill="#4A2E8A">/ .pdf</text>
+        <polygon points="160,88 172,88 166,80" fill="#6C4AB6"/>
+
+        <rect x="180" y="40" width="138" height="96" rx="10" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="249" y="66" font-size="13.5" font-weight="700" text-anchor="middle" fill="#201A30">② 预处理</text>
+        <text x="249" y="88" font-size="10.5" text-anchor="middle" fill="#6A6376">按「第X场」切分场景</text>
+        <text x="249" y="103" font-size="10.5" text-anchor="middle" fill="#6A6376">「角色名：」抽台词</text>
+        <text x="249" y="118" font-size="10.5" text-anchor="middle" fill="#6A6376">建立行号索引</text>
+        <polygon points="326,88 338,88 332,80" fill="#9C86D6"/>
+
+        <rect x="346" y="40" width="138" height="96" rx="10" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="415" y="66" font-size="13.5" font-weight="700" text-anchor="middle" fill="#201A30">③ 并行分析</text>
+        <text x="415" y="88" font-size="10.5" text-anchor="middle" fill="#6A6376">结构 / 台词 / 人物 / 逻辑</text>
+        <text x="415" y="103" font-size="10.5" text-anchor="middle" fill="#6A6376">LLM 四子任务并行</text>
+        <text x="415" y="118" font-size="10.5" text-anchor="middle" fill="#6A6376">+ 统计 & 规则引擎</text>
+        <polygon points="492,88 504,88 498,80" fill="#9C86D6"/>
+
+        <rect x="512" y="40" width="138" height="96" rx="10" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="581" y="66" font-size="13.5" font-weight="700" text-anchor="middle" fill="#201A30">④ 聚合评分</text>
+        <text x="581" y="88" font-size="10.5" text-anchor="middle" fill="#6A6376">四维 0–100 分</text>
+        <text x="581" y="103" font-size="10.5" text-anchor="middle" fill="#6A6376">加权总分</text>
+        <text x="581" y="118" font-size="10.5" text-anchor="middle" fill="#6A6376">问题严重度分级</text>
+        <polygon points="658,88 670,88 664,80" fill="#9C86D6"/>
+
+        <rect x="678" y="40" width="138" height="96" rx="10" fill="#FFFFFF" stroke="#CFC2EA"/>
+        <text x="747" y="66" font-size="13.5" font-weight="700" text-anchor="middle" fill="#201A30">⑤ 诊断报告</text>
+        <text x="747" y="88" font-size="10.5" text-anchor="middle" fill="#6A6376">总览 + 逐场景问题卡</text>
+        <text x="747" y="103" font-size="10.5" text-anchor="middle" fill="#6A6376">定位跳转 + 修改建议</text>
+        <text x="747" y="118" font-size="10.5" text-anchor="middle" fill="#6A6376">张力曲线</text>
+        <polygon points="824,88 836,88 830,80" fill="#6C4AB6"/>
+
+        <rect x="844" y="40" width="66" height="96" rx="10" fill="#FBF3DC" stroke="#C9A227"/>
+        <text x="877" y="72" font-size="11.5" font-weight="700" text-anchor="middle" fill="#8A6D12">⑥</text>
+        <text x="877" y="88" font-size="11.5" font-weight="700" text-anchor="middle" fill="#8A6D12">反馈</text>
+        <text x="877" y="103" font-size="11.5" font-weight="700" text-anchor="middle" fill="#8A6D12">闭环</text>
+        <text x="877" y="118" font-size="9.5" text-anchor="middle" fill="#8A6D12">采纳标注</text>
+
+        <!-- feedback loop -->
+        <path d="M 877 160 Q 877 208 450 208 Q 30 208 30 160 L 30 146" fill="none" stroke="#C9A227" stroke-width="2" stroke-dasharray="6,4"/>
+        <polygon points="24,146 38,146 31,136" fill="#C9A227"/>
+        <text x="452" y="228" font-size="11.5" text-anchor="middle" fill="#8A6D12">反馈闭环：标记「已采纳」→ 版本对比 → 下一轮诊断分数变化</text>
+      </svg>
+      <figcaption>图 2 · 六步流水线：分析环节并行、报告环节可跳转、末尾反馈闭环驱动版本迭代</figcaption>
+    </figure>
+
+    <h3>4.1 评分模型（口径）</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th>维度</th><th class="c" style="width:14%;">权重</th><th>评分依据（示例口径）</th></tr>
+      <tr><td>结构</td><td class="c">30%</td><td>三幕完整性、节拍推进、高潮位置、伏笔—回收覆盖率</td></tr>
+      <tr><td>台词</td><td class="c">30%</td><td>自然度均分（锚定具体句）、口语化程度、信息密度、轮次健康度</td></tr>
+      <tr><td>人物</td><td class="c">20%</td><td>档案一致性得分、台词风格漂移次数、动机清晰度</td></tr>
+      <tr><td>逻辑</td><td class="c">20%</td><td>因果链断裂数、时间线矛盾数、人称/细节一致性</td></tr>
+    </table>
+    </div>
+    <p class="note">口径说明：以上权重为方案设计值，答辩前用剧社真实剧本校准一次；问题分级「严重（阻断排练）/ 中等（影响观感）/ 轻微（打磨）」。</p>
+  </section>
+
+  <!-- ============ 05 核心功能 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">05</span><h2>核心功能模块</h2><span class="en">CORE MODULES</span></div>
+    <div class="cards">
+      <div class="card"><div class="k">M1 · 结构分析</div><div class="v">三幕划分、节拍表、高潮定位、伏笔—回收清单；输出张力曲线与结构评分</div></div>
+      <div class="card"><div class="k">M2 · 台词自然度</div><div class="v">逐句自然度评分（0–100），检测书面语过重 / 中二宣言 / 独白式 / 信息空转，附降档改写示例</div></div>
+      <div class="card"><div class="k">M3 · 人物一致性</div><div class="v">逐角色档案卡（性格标签 / 口头禅 / 语域），检测风格漂移与反应矛盾，输出警告列表</div></div>
+      <div class="card"><div class="k">M4 · 逻辑检查</div><div class="v">因果链校验、伏笔回收匹配、时间 / 人称 / 细节矛盾；规则引擎先行，LLM 补充语义级矛盾</div></div>
+      <div class="card"><div class="k">M5 · 版本对比</div><div class="v">同一剧本多版本并存，修改前后四维分数对比，采纳建议自动标记「已处理」</div></div>
+      <div class="card"><div class="k">M6 · 幽默分析</div><div class="v">幽默感 × 冒犯度 × 含蓄度三维检测：有笑点、不冒犯他人、有深度需观众自己会心一笑</div></div>
+      <div class="card"><div class="k">M7 · 叙事节奏</div><div class="v">节奏曲线（全局张力起伏）、笑点 × 主线排列（笑点不泄主线的气）、双线并行切换（A/B 线怎么切、何时汇）</div></div>
+    </div>
+
+    <h3>5.1 M2 台词自然度 · 中二度检测标准（详细设计）</h3>
+    <p class="lead">「中二」不是感觉，而是可计算的信号组合：<strong>词汇层 + 句法层 + 语义层</strong>三层并行检测，结果乘<strong>角色 × 场景校准系数</strong>，输出 0–100 中二度，并给出「定位 + 信号证据 + 降档建议」。</p>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">① 检测标准总表</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:9%;">层</th><th style="width:22%;">检测信号</th><th style="width:41%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td rowspan="4"><b>词汇层</b><br><span style="font-size:12px;color:var(--sub);">权重 40%</span></td><td>中二词表命中密度</td><td>单句命中 ≥2 个，或每百字 ≥3 个 → 报警</td><td>规则引擎（词表 + 分词统计，词表可配置）</td></tr>
+      <tr><td>绝对化 / 全称词密度</td><td>永远 / 绝不 / 一切 / 必须 / 一定 单场密度 &gt; 正常剧本基线 2 倍</td><td>规则引擎</td></tr>
+      <tr><td>强情绪标点密度</td><td>感叹号占该句标点比 &gt;30%；或连续 ≥3 句感叹号结尾</td><td>规则引擎</td></tr>
+      <tr><td>抽象名词占比</td><td>抽象名词 / 总名词 &gt; 0.5（中二宣言显著偏高）</td><td>词性标注（jieba / THULAC）</td></tr>
+      <tr><td rowspan="3"><b>句法层</b><br><span style="font-size:12px;color:var(--sub);">权重 25%</span></td><td>宣言式句式模板命中</td><td>正则命中模板库（见 §⑥），每条命中计 1 分</td><td>规则引擎（模板库可配置）</td></tr>
+      <tr><td>超长哲理句</td><td>单句 &gt;40 字且非问句（日常对话罕见）</td><td>规则引擎</td></tr>
+      <tr><td>连续独白</td><td>单一角色连续 ≥3 轮、或单段 ≥80 字无打断 → 演讲腔</td><td>轮次统计</td></tr>
+      <tr><td rowspan="4"><b>语义层</b><br><span style="font-size:12px;color:var(--sub);">权重 35%</span></td><td>情绪反应比例失调</td><td>事件强度 vs 反应强度评分差 &gt;2 档（0–5 档），如「踩了下鞋」→「你必将付出代价！」</td><td>LLM 结构化输出（双维度打分）</td></tr>
+      <tr><td>信息密度过低（空转宣言）</td><td>单句去修饰后零新信息——不推进剧情 / 人物 / 关系</td><td>LLM 判定</td></tr>
+      <tr><td>语域失配</td><td>日常场景出现史诗语域（史诗词 / 古风词）</td><td>LLM 场景标签 + 语域检测</td></tr>
+      <tr><td>重复意象</td><td>同一角色同义中二意象复用 ≥3 次</td><td>LLM + 统计</td></tr>
+      <tr><td><b>情境校准</b></td><td>角色 × 场景调节</td><td>反派登场 / 高潮场景容忍系数 ×0.6；日常场景从严 ×1.3；中二设定角色降权或豁免</td><td>校准系数（复用 M3 人物档案的角色定位标签）</td></tr>
+    </table>
+    </div>
+    <p class="note">词表、句式模板、阈值均为可配置项；答辩前用剧社真实剧本做一次校准。</p>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">② 评分模型与分级</h4>
+    <div class="box" style="text-align:center;font-size:15px;font-weight:600;color:var(--accent-deep);">中二度 =（词汇 40% + 句法 25% + 语义 35%）× 校准系数 → 0–100 分</div>
+    <p class="note">实现层（规则引擎骨架）采用可解释的累加点值制：各信号点值与语义分权重见 config/chuuni_config.json 的 weights 字段，可配置；答辩口径以真实剧本校准后的实现为准。</p>
+    <div class="mile">
+      <div class="m"><b>&lt;30 · 正常</b><div>无需处理</div></div>
+      <div class="m"><b>30–60 · 偶发</b><div>提示级：单句标注，不打断阅读</div></div>
+      <div class="m"><b>60–85 · 明显中二</b><div>定位 + 信号证据 + 降档建议</div></div>
+      <div class="m"><b>≥85 · 严重</b><div>阻断级：整段重写建议，进入高优问题列表</div></div>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">③ 情境校准（减少误报的关键）</h4>
+    <div class="box">反派 BOSS 说中二台词是合理的，日常场景的普通人说就是问题——因此最终分数必须乘校准系数，否则系统会天天误报。<strong>这也是答辩亮点</strong>：检测不是无脑判词，而是「情境感知」的。角色定位标签（反派 / 主角 / 中二设定角色）直接复用 M3 人物档案模块的输出。</div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">④ 降档策略（输出端 · 每条建议 = 定位 + 证据 + 改写方向）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:18%;">策略</th><th style="width:38%;">做法</th><th>示例（降档）</th></tr>
+      <tr><td>大词换小词</td><td>命运 / 宿命 → 具体事件指称</td><td>「这就是我的命运！」→「到这儿，走不下去了。」</td></tr>
+      <tr><td>宣言换动作</td><td>抽象宣告 → 可见行为或细节</td><td>「我即是毁灭！」→「我烧了那封信。」</td></tr>
+      <tr><td>情绪降档</td><td>感叹号 → 句号；极端词 → 程度副词降级</td><td>「你竟敢背叛我！！」→「你背叛了我。」</td></tr>
+      <tr><td>独白加打断</td><td>插入对方反应，打破演讲腔</td><td>长篇独白中插入对方一句疑问</td></tr>
+      <tr><td>语域回归</td><td>史诗词 → 口语词（对照词表）</td><td>「吾之觉悟，天地可鉴」→「我想好了，就这么干。」</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">⑤ 初版中二词表（可配置）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">类别</th><th>示例词</th></tr>
+      <tr><td>命运宿命类</td><td>命运、宿命、天命、劫数、注定、因果、轮回</td></tr>
+      <tr><td>黑暗神秘类</td><td>黑暗、深渊、混沌、虚妄、幻影、亡灵、诅咒、封印</td></tr>
+      <tr><td>光辉神圣类</td><td>光芒、曙光、圣光、永恒、不朽、救赎、审判、天罚、净化</td></tr>
+      <tr><td>力量权能类</td><td>觉醒、潜能、究极、极限、契约、誓约、王座、王者、支配、征服、裁决、禁忌</td></tr>
+      <tr><td>贬低凡人感</td><td>蝼蚁、凡人、愚昧、可悲、卑微（作贬称用法）</td></tr>
+      <tr><td>史诗古风类</td><td>吾、汝、苍生、苍穹、洪荒、九霄、陨落、黎明（抽象用法）</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">⑥ 初版句式模板库（可配置 · 正则）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:44%;">正则模板</th><th>示例命中</th></tr>
+      <tr><td>^我是.{0,10}(王|神|选中|继承)</td><td>「我是被黑暗选中的人」</td></tr>
+      <tr><td>^我即是|^吾乃</td><td>「我即是毁灭」</td></tr>
+      <tr><td>.{0,10}的命运.{0,10}(终结|决定|掌握)</td><td>「我的命运，由我自己掌握」</td></tr>
+      <tr><td>^.{0,8}的时代(已经)?结束</td><td>「你们这群凡人的时代结束了」</td></tr>
+      <tr><td>^你竟敢</td><td>「你竟敢背叛我！」</td></tr>
+      <tr><td>^给我.{0,6}[！!]$</td><td>「给我记住！」</td></tr>
+      <tr><td>.{0,8}到此为止(了)?$</td><td>「这场闹剧，到此为止了」</td></tr>
+      <tr><td>^这就是.{0,12}(力量|觉悟|意志)</td><td>「这就是我的觉悟！」</td></tr>
+      <tr><td>^感受.{0,6}吧</td><td>「感受痛苦吧」</td></tr>
+      <tr><td>^世界(不过|终究|只是)</td><td>「世界不过是弱者的牢笼」</td></tr>
+      <tr><td>.{0,8}(最讨厌了|才是正义|才是真理)$</td><td>「伪善什么的最讨厌了」</td></tr>
+      <tr><td>^你以为.{0,12}(太天真|可笑|错了)</td><td>「你以为我会原谅你？太天真了」</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">⑦ 验证指标（目标值 = 验收标准）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">指标</th><th style="width:18%;">目标值</th><th>度量方式</th></tr>
+      <tr><td>中二句召回率</td><td>≥ 75%</td><td>与 3 位社员人工标注的中二句集合对比</td></tr>
+      <tr><td>日常场景误报率</td><td>≤ 10%</td><td>校准系数生效后，日常场景被误判为中二的台词占比</td></tr>
+      <tr><td>降档建议采纳率</td><td>≥ 60%</td><td>编剧采纳 / 部分采纳的降档建议条数占比</td></tr>
+    </table>
+    </div>
+    <p class="note">口径声明：以上为方案设定的验收目标值，非已实测数据；答辩前用真实剧本完成采集后替换。</p>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">⑧ 词表校准计划（把误报率压到 ≤10%）</h4>
+    <div class="box">
+      <ol style="margin:0 0 0 20px;">
+        <li><b>语料与标注</b>：取 3 部剧社真实剧本，3 位社员独立标注「明显中二」句；标注一致性 Kappa ≥ 0.6 才进入迭代</li>
+        <li><b>跑基线</b>：规则引擎对标注集出分，计算总体召回率与误报率（按场景分层统计）</li>
+        <li><b>词表迭代</b>：删除在正常语境高误报的词（如「觉醒」在励志戏属正常 → 加入场景豁免表），补充漏报词，调整阈值</li>
+        <li><b>再验证</b>：重跑标注集，目标 = 召回 ≥75% 且日常场景误报 ≤10%</li>
+        <li><b>固化配置</b>：校准后的词表 / 阈值存为 v1.json；答辩展示「校准前后对比表」作为迭代证据</li>
+      </ol>
+    </div>
+
+    <h3>5.2 M2 台词自然度 · 幽默分析（幽默感 × 冒犯度 × 含蓄度）</h3>
+    <p class="lead">好的玩笑要同时满足三条：<strong>有幽默感</strong>、<strong>不冒犯他人</strong>、<strong>有深度（不直白，让观众自己会心一笑）</strong>。幽默分析把这三条拆成可检测的维度；其中<strong>冒犯度是红线</strong>，高风险优先处理。</p>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">① 检测维度总表</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:11%;">维度</th><th style="width:22%;">检测信号</th><th style="width:40%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td rowspan="2"><b>幽默感</b></td><td>笑点存在性</td><td>双关 / 谐音、反差、夸张、自嘲、前文 callback 任一命中 → 有笑点（0–100）</td><td>LLM 判断 + 谐音词表辅助</td></tr>
+      <tr><td>笑点类型标注</td><td>输出类型标签（谐音 / 反讽 / 自嘲 / callback），供深度判断复用</td><td>LLM</td></tr>
+      <tr><td rowspan="4"><b>冒犯度</b><br><span style="font-size:12px;color:var(--sub);">红线维度</span></td><td>群体标签命中</td><td>性别 / 地域 / 民族 / 职业 / 疾病 / 外貌 / 年龄 贬损词 → 高风险</td><td>规则词表（可配置）+ LLM 语境复核</td></tr>
+      <tr><td>贬损对象识别</td><td>对象 = 群体 → 直接高风险；= 在场角色 → 结合角色关系；= 第三方 → 中风险</td><td>LLM 对象识别</td></tr>
+      <tr><td>敏感边界</td><td>灾难 / 歧视 / 性 / 暴力玩笑 → 红灯必处理</td><td>规则词表 + LLM</td></tr>
+      <tr><td>关系不对等</td><td>单向嘲讽且对象处于低位（长辈 / 新人 / 被排挤者）→ 风险上调</td><td>LLM 结合 M3 人物档案</td></tr>
+      <tr><td rowspan="2"><b>含蓄度</b><br><span style="font-size:12px;color:var(--sub);">深度维度</span></td><td>笑点直白度</td><td>包袱被解释（「也就是说 / 你懂的」）、谐音直给 → 直白；反讽 / 双关 / callback → 含蓄</td><td>解释标记词规则 + LLM</td></tr>
+      <tr><td>深度类型</td><td>直白梗（0–40）/ 适中（40–70）/ 需思考（70–100），附「观众是否要推理」判定</td><td>LLM</td></tr>
+      <tr><td><b>情境校准</b></td><td>角色关系 × 场景</td><td>朋友互损 ×0.5（容忍）；陌生人 / 严肃场景 ×1.5；有观众在场 ×1.2</td><td>校准系数（复用 M3 人物档案）</td></tr>
+    </table>
+    </div>
+    <p class="note">关键设计：同一句「你这头猪」，朋友互损与陌生人辱骂完全不同——所以幽默分析<strong>不能纯规则</strong>，必须输入角色关系、场景氛围与前文 callback，由 LLM 结合上下文判断；规则只承担群体标签这类可枚举检查。</p>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">② 处置分级</h4>
+    <div class="mile">
+      <div class="m"><b>冒犯度 &lt;30 · 绿</b><div>可保留</div></div>
+      <div class="m"><b>30–60 · 黄</b><div>提醒级：建议降级处理</div></div>
+      <div class="m"><b>≥60 · 红</b><div>必须处理：进入高优问题列表</div></div>
+      <div class="m"><b>含蓄度三档</b><div>太直白（建议升深度）/ 适中 / 过含蓄（提示观众可能 get 不到）</div></div>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">③ 升 / 降级策略（输出端）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:16%;">目标</th><th style="width:42%;">策略</th><th>示例</th></tr>
+      <tr><td>降低冒犯</td><td>群体贬损 → 自嘲（矛头转向自己）；群体标签 → 虚构个体角色；去人身标签、保留幽默内核</td><td>「女生就是数学差」→「我数学差得连计算器都叹气」</td></tr>
+      <tr><td>提升深度</td><td>说破 → 留白；直白梗 → 双关 / 反讽；增加前文 callback</td><td>「他像块木头」→「和他聊天，对面的树都觉得自己输得不冤」</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">④ 验证指标（目标值 = 验收标准）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">指标</th><th style="width:18%;">目标值</th><th>度量方式</th></tr>
+      <tr><td>冒犯句召回率</td><td>≥ 80%</td><td>冒犯是红线，召回优先；与人工标注的冒犯句集合对比</td></tr>
+      <tr><td>日常误报率</td><td>≤ 15%</td><td>朋友互损场景被误判为冒犯的台词占比</td></tr>
+      <tr><td>深度建议采纳率</td><td>≥ 50%</td><td>编剧采纳「升深度」建议的条数占比</td></tr>
+    </table>
+    </div>
+    <p class="note">口径声明：以上为方案设定的验收目标值，非已实测数据；答辩前用真实剧本完成采集后替换。</p>
+
+    <h3>5.3 M7 叙事节奏 · 节奏曲线 / 笑点×主线排列 / 双线并行切换</h3>
+    <p class="lead">观众「觉得闷、觉得乱」往往不是单点台词的问题，而是<strong>排列</strong>问题。本模块把节奏拆成三块：<strong>节奏曲线</strong>（全局张力起伏）、<strong>笑点 × 主线排列</strong>（笑点不能泄主线的气）、<strong>双线并行切换</strong>（A/B 线怎么切、何时汇）。数据来源全部复用前置模块：张力值来自 M1、笑点定位与空转判定来自 M2/5.2、场景信息密度来自 5.1 语义层。</p>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">① 节奏曲线（全局排列）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>张力分布形态</td><td>前 1/3 出现全局峰值 → 高潮前置；后 1/3 无峰值 → 后劲不足</td><td>规则（场景张力统计，复用 M1 输出）</td></tr>
+      <tr><td>张力方差</td><td>全程张力值方差低于阈值 → 「一条直线」平淡风险</td><td>规则（标准差）</td></tr>
+      <tr><td>连续高张力段</td><td>≥3 场连续高强度 → 观众疲劳</td><td>规则</td></tr>
+      <tr><td>平静段长度</td><td>≥4 场无事件推进 → 拖沓</td><td>规则（复用 5.1 信息密度）</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">② 笑点 × 主线排列</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>笑点密度分布</td><td>前半 / 后半笑点密度差 &gt;2 倍 → 前密后疏、后劲不足</td><td>统计（复用 5.2 笑点定位）</td></tr>
+      <tr><td>笑点—高潮冲突</td><td>高潮前 1 场内插入笑点 → 泄气风险（dramatic deflation）</td><td>LLM（高潮定位 × 笑点定位对照）</td></tr>
+      <tr><td>空转笑点占比</td><td>不推进信息 / 关系的笑点占比 &gt;40% → 主线被稀释</td><td>LLM（复用 5.2 空转判定）</td></tr>
+      <tr><td>连笑间隔</td><td>连续 ≥4 场无笑点 → 流失风险；单场 ≥3 个笑点 → 廉价堆叠</td><td>统计</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">③ 双线并行切换</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>线识别</td><td>角色—场景共现矩阵聚类 → 场景归属 A 线 / B 线（如 现实线 vs 回忆线）</td><td>规则（聚类，可复算）</td></tr>
+      <tr><td>切换频率</td><td>平均每 &lt;2 场切换 → 过频（观众跟不上）；单线连续 ≥4 场 → 另一线被遗忘</td><td>统计</td></tr>
+      <tr><td>切换动机</td><td>切换是否发生在悬念点（cliffhanger）切入；无动机切换 → 生硬</td><td>LLM</td></tr>
+      <tr><td>线间关联</td><td>两线是否存在主题 / 因果连接；完全无关 → 观众困惑「为何双线」</td><td>LLM</td></tr>
+      <tr><td>结尾交汇</td><td>两线是否在末段交汇（convergence）；未交汇 → 结构残缺</td><td>LLM + 规则</td></tr>
+    </table>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">④ 输出与建议</h4>
+    <div class="box">
+      <p><b>节奏总览图</b>：张力曲线 + 笑点散点 + 主线推进标记（答辩用「全场心电图」），问题清单定位到具体场景：</p>
+      <ul>
+        <li><b>节奏</b>：高潮前移 / 后移；平静段插入小冲突</li>
+        <li><b>笑点</b>：从高潮区移走；分散堆叠的笑点；把空转笑点改成推进信息</li>
+        <li><b>双线</b>：切换点移到悬念处；单线超长强制切回；结尾补交汇</li>
+      </ul>
+    </div>
+
+    <h4 style="font-size:15px;color:var(--accent-deep);margin:18px 0 10px;">⑤ 验证指标（目标值 = 验收标准）</h4>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">指标</th><th style="width:18%;">目标值</th><th>度量方式</th></tr>
+      <tr><td>节奏问题召回率</td><td>≥ 70%</td><td>与导演人工标注的节奏问题对比</td></tr>
+      <tr><td>切换生硬点检出率</td><td>≥ 75%</td><td>与人工标注的 A/B 切换点对比</td></tr>
+      <tr><td>建议采纳率</td><td>≥ 50%</td><td>导演采纳 / 部分采纳的建议条数占比</td></tr>
+    </table>
+    </div>
+    <p class="note">口径声明：以上为方案设定的验收目标值，非已实测数据；答辩前用真实剧本完成采集后替换。</p>
+  </section>
+
+  <!-- ============ 06 界面原型 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">06</span><h2>界面原型</h2><span class="en">UI PROTOTYPE</span></div>
+    <p class="lead">共 5 个页面，按「输入 → 总览 → 下钻」的阅读路径组织。以下为线框示意（非最终视觉稿）。</p>
+
+    <figure>
+      <div class="fig-title">五个页面线框（示意）</div>
+      <svg viewBox="0 0 920 560" role="img" aria-label="五个页面线框示意">
+        <!-- P1 -->
+        <g>
+          <rect x="10" y="10" width="288" height="250" rx="12" fill="#FFFFFF" stroke="#CFC2EA"/>
+          <rect x="22" y="22" width="264" height="26" rx="6" fill="#EDE6F8"/>
+          <text x="154" y="39" font-size="11" text-anchor="middle" fill="#4A2E8A">P1 剧本输入页</text>
+          <rect x="22" y="58" width="264" height="120" rx="8" fill="#F7F5F0" stroke="#E7E1D6"/>
+          <text x="154" y="105" font-size="10.5" text-anchor="middle" fill="#9A938A">粘贴区 / 上传 .txt·.docx·.pdf</text>
+          <text x="154" y="122" font-size="10.5" text-anchor="middle" fill="#9A938A">含示例剧本入口</text>
+          <rect x="22" y="190" width="264" height="34" rx="8" fill="#6C4AB6"/>
+          <text x="154" y="211" font-size="12" font-weight="600" text-anchor="middle" fill="#FFFFFF">开始诊断</text>
+          <rect x="22" y="232" width="264" height="16" rx="4" fill="#FDF1DC"/>
+          <text x="154" y="244" font-size="9" text-anchor="middle" fill="#B45309">支持分场分批 · 长任务进度提示</text>
+        </g>
+        <!-- P2 -->
+        <g>
+          <rect x="316" y="10" width="288" height="250" rx="12" fill="#FFFFFF" stroke="#CFC2EA"/>
+          <rect x="328" y="22" width="264" height="26" rx="6" fill="#EDE6F8"/>
+          <text x="460" y="39" font-size="11" text-anchor="middle" fill="#4A2E8A">P2 诊断总览页</text>
+          <circle cx="400" cy="105" r="40" fill="#F4F0FA" stroke="#6C4AB6"/>
+          <text x="400" y="101" font-size="16" font-weight="700" text-anchor="middle" fill="#4A2E8A">总分</text>
+          <text x="400" y="120" font-size="15" font-weight="700" text-anchor="middle" fill="#6C4AB6">76</text>
+          <rect x="452" y="70" width="130" height="70" rx="8" fill="#FBF3DC" stroke="#EBD9A0"/>
+          <text x="517" y="95" font-size="10" text-anchor="middle" fill="#8A6D12">问题统计</text>
+          <text x="517" y="112" font-size="10.5" text-anchor="middle" fill="#6B5A1E">严重 3 · 中等 8 · 轻微 12</text>
+          <rect x="328" y="160" width="264" height="40" rx="8" fill="#F7F5F0" stroke="#E7E1D6"/>
+          <text x="460" y="184" font-size="10.5" text-anchor="middle" fill="#6A6376">四维雷达图：结构 / 台词 / 人物 / 逻辑</text>
+          <rect x="328" y="210" width="264" height="40" rx="8" fill="#F7F5F0" stroke="#E7E1D6"/>
+          <text x="460" y="226" font-size="10.5" text-anchor="middle" fill="#6A6376">优先级问题 Top 5 摘要</text>
+          <text x="460" y="242" font-size="9.5" text-anchor="middle" fill="#9A938A">一键进入对应场景</text>
+        </g>
+        <!-- P3 -->
+        <g>
+          <rect x="622" y="10" width="288" height="250" rx="12" fill="#FFFFFF" stroke="#CFC2EA"/>
+          <rect x="634" y="22" width="264" height="26" rx="6" fill="#EDE6F8"/>
+          <text x="766" y="39" font-size="11" text-anchor="middle" fill="#4A2E8A">P3 张力曲线页</text>
+          <polyline points="648,210 690,180 730,196 770,150 810,170 850,108 886,120" fill="none" stroke="#6C4AB6" stroke-width="2.5"/>
+          <circle cx="770" cy="150" r="5" fill="#C9A227"/>
+          <circle cx="850" cy="108" r="5" fill="#C9A227"/>
+          <text x="634" y="230" font-size="10" text-anchor="middle" fill="#6A6376">横轴：场景进度（1 → N）</text>
+          <text x="766" y="246" font-size="10" text-anchor="middle" fill="#6A6376">纵轴：张力分 · 金色点为转折/高潮标记</text>
+        </g>
+        <!-- P4 -->
+        <g>
+          <rect x="10" y="290" width="444" height="250" rx="12" fill="#FFFFFF" stroke="#CFC2EA"/>
+          <rect x="22" y="302" width="420" height="26" rx="6" fill="#EDE6F8"/>
+          <text x="232" y="319" font-size="11" text-anchor="middle" fill="#4A2E8A">P4 逐场景诊断页</text>
+          <rect x="22" y="338" width="120" height="180" rx="8" fill="#F7F5F0" stroke="#E7E1D6"/>
+          <text x="82" y="360" font-size="10" text-anchor="middle" fill="#6A6376">场景列表</text>
+          <text x="82" y="380" font-size="9.5" text-anchor="middle" fill="#9A938A">第一场 ✓</text>
+          <text x="82" y="396" font-size="9.5" text-anchor="middle" fill="#9A938A">第二场 3 问题</text>
+          <text x="82" y="412" font-size="9.5" text-anchor="middle" fill="#9A938A">第三场 1 问题</text>
+          <rect x="152" y="338" width="290" height="52" rx="8" fill="#FBE9E8" stroke="#E8B4B2"/>
+          <text x="297" y="356" font-size="10.5" font-weight="600" fill="#B0302E">[严重] 第二场 · 台词自然度偏低</text>
+          <text x="297" y="374" font-size="9.5" text-anchor="middle" fill="#8A4B49">定位：第 34–36 行（点击跳转原文高亮）</text>
+          <rect x="152" y="398" width="290" height="52" rx="8" fill="#FDF1DC" stroke="#EBD9A0"/>
+          <text x="297" y="416" font-size="10.5" font-weight="600" fill="#B45309">[中等] 第三场 · 伏笔未回收</text>
+          <text x="297" y="434" font-size="9.5" text-anchor="middle" fill="#8A6D12">第 58 行提及的「钥匙」全剧未再用到</text>
+          <rect x="152" y="458" width="290" height="60" rx="8" fill="#E4F3E8" stroke="#B7D9C2"/>
+          <text x="297" y="478" font-size="10.5" font-weight="600" fill="#2F7D46">润色建议（示例）</text>
+          <text x="297" y="496" font-size="9.5" text-anchor="middle" fill="#3E6B4C">原句「我觉得此事颇为重要」→「这事，你不能再瞒了」</text>
+        </g>
+        <!-- P5 -->
+        <g>
+          <rect x="472" y="290" width="438" height="250" rx="12" fill="#FFFFFF" stroke="#CFC2EA"/>
+          <rect x="484" y="302" width="414" height="26" rx="6" fill="#EDE6F8"/>
+          <text x="691" y="319" font-size="11" text-anchor="middle" fill="#4A2E8A">P5 人物档案页</text>
+          <rect x="484" y="338" width="196" height="180" rx="8" fill="#F7F5F0" stroke="#E7E1D6"/>
+          <text x="582" y="360" font-size="10.5" font-weight="600" fill="#201A30">角色：林默</text>
+          <text x="582" y="380" font-size="9.5" text-anchor="middle" fill="#6A6376">出场 12 场 · 台词 96 句</text>
+          <text x="582" y="398" font-size="9.5" text-anchor="middle" fill="#6A6376">风格：冷峻 · 短句 · 反问</text>
+          <text x="582" y="416" font-size="9.5" text-anchor="middle" fill="#B45309">⚠ 第七场风格漂移</text>
+          <text x="582" y="434" font-size="9.5" text-anchor="middle" fill="#6A6376">口头禅：「有意思」（×8）</text>
+          <rect x="690" y="338" width="208" height="180" rx="8" fill="#F7F5F0" stroke="#E7E1D6"/>
+          <text x="794" y="360" font-size="10.5" font-weight="600" fill="#201A30">一致性得分</text>
+          <text x="794" y="410" font-size="26" font-weight="700" text-anchor="middle" fill="#2F7D46">82</text>
+          <text x="794" y="434" font-size="9.5" text-anchor="middle" fill="#6A6376">漂移片段：第七场第 88–91 行</text>
+          <text x="794" y="452" font-size="9.5" text-anchor="middle" fill="#6A6376">建议：回归短句与反问句式</text>
+        </g>
+      </svg>
+      <figcaption>图 3 · P1 输入 → P2 总览（雷达图+问题统计）→ P3 张力曲线 → P4 场景下钻（定位+建议）→ P5 人物档案；P4 中所有分数与建议均为线框占位示意，非真实诊断结果</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ 07 实施计划 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">07</span><h2>实施计划</h2><span class="en">IMPLEMENTATION PLAN</span></div>
+    <p class="lead">6 周 4 阶段，每个阶段结束有可演示的里程碑。MVP 优先：先跑通「上传 → 报告」全流程，再逐步加深分析维度。</p>
+
+    <figure>
+      <div class="fig-title">6 周甘特计划（示意）</div>
+      <svg viewBox="0 0 920 300" role="img" aria-label="六周实施计划甘特图">
+        <!-- week header -->
+        <text x="16" y="26" font-size="12" font-weight="700" fill="#201A30">阶段 / 里程碑</text>
+        <text x="130" y="20" font-size="11" text-anchor="middle" fill="#6A6376">W1</text>
+        <text x="260" y="20" font-size="11" text-anchor="middle" fill="#6A6376">W2</text>
+        <text x="390" y="20" font-size="11" text-anchor="middle" fill="#6A6376">W3</text>
+        <text x="520" y="20" font-size="11" text-anchor="middle" fill="#6A6376">W4</text>
+        <text x="650" y="20" font-size="11" text-anchor="middle" fill="#6A6376">W5</text>
+        <text x="780" y="20" font-size="11" text-anchor="middle" fill="#6A6376">W6</text>
+        <line x1="120" y1="28" x2="910" y2="28" stroke="#E7E1D6"/>
+
+        <!-- row 1 -->
+        <text x="16" y="68" font-size="12" font-weight="600" fill="#4A2E8A">阶段一 · MVP</text>
+        <rect x="126" y="52" width="258" height="26" rx="8" fill="#C9B8EF" stroke="#6C4AB6"/>
+        <text x="255" y="69" font-size="10.5" text-anchor="middle" fill="#3A2E5C">上传 · 预处理 · 结构分析 · 总览报告</text>
+        <polygon points="392,65 404,65 398,56" fill="#C9A227"/>
+        <text x="412" y="70" font-size="11" font-weight="700" fill="#8A6D12">M1</text>
+        <text x="16" y="92" font-size="10.5" fill="#6A6376">验收：对一部完整剧本跑通「上传 → 报告」，结构诊断可定位</text>
+
+        <!-- row 2 -->
+        <text x="16" y="138" font-size="12" font-weight="600" fill="#4A2E8A">阶段二 · 分析深化</text>
+        <rect x="392" y="122" width="258" height="26" rx="8" fill="#C9B8EF" stroke="#6C4AB6"/>
+        <text x="521" y="139" font-size="10.5" text-anchor="middle" fill="#3A2E5C">台词自然度 · 人物一致性 · 逻辑检查</text>
+        <polygon points="658,145 670,145 664,136" fill="#C9A227"/>
+        <text x="678" y="150" font-size="11" font-weight="700" fill="#8A6D12">M2</text>
+        <text x="16" y="162" font-size="10.5" fill="#6A6376">验收：四维诊断全部上线，每个问题可跳转定位，报告含修改建议</text>
+
+        <!-- row 3 -->
+        <text x="16" y="208" font-size="12" font-weight="600" fill="#4A2E8A">阶段三 · 前端打磨</text>
+        <rect x="656" y="192" width="120" height="26" rx="8" fill="#C9B8EF" stroke="#6C4AB6"/>
+        <text x="716" y="209" font-size="10.5" text-anchor="middle" fill="#3A2E5C">张力曲线 · 版本对比</text>
+        <polygon points="784,205 796,205 790,196" fill="#C9A227"/>
+        <text x="804" y="210" font-size="11" font-weight="700" fill="#8A6D12">M3</text>
+        <text x="16" y="232" font-size="10.5" fill="#6A6376">验收：可视化完整、演示流畅，支持修改前后分数对比</text>
+
+        <!-- row 4 -->
+        <text x="16" y="278" font-size="12" font-weight="600" fill="#4A2E8A">阶段四 · 验证答辩</text>
+        <rect x="782" y="262" width="122" height="26" rx="8" fill="#F0E3B8" stroke="#C9A227"/>
+        <text x="843" y="279" font-size="10.5" text-anchor="middle" fill="#6B5A1E">真实剧本测试 · 盲评</text>
+        <polygon points="904,275 916,275 910,266" fill="#C9A227"/>
+        <text x="888" y="280" font-size="11" font-weight="700" fill="#8A6D12">M4</text>
+        <text x="16" y="296" font-size="10.5" fill="#6A6376">验收：2 部剧社真实剧本 + 3–5 位社员盲评，指标采集完成，答辩就绪</text>
+      </svg>
+      <figcaption>图 4 · 六周四阶段：金色菱形为里程碑 M1–M4；W6 同步产出答辩材料</figcaption>
+    </figure>
+
+    <h3>7.1 验证指标（目标值 = 验收标准）</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">指标</th><th style="width:26%;">目标值</th><th>度量方式</th></tr>
+      <tr><td>诊断效率</td><td>全本报告 ≤ 10 分钟</td><td>对照人工通读找问题约 2–3 小时；不含人工复核时间</td></tr>
+      <tr><td>问题召回率</td><td>≥ 70%</td><td>与 3 位社员独立标注的问题集合对比（脚本问题级）</td></tr>
+      <tr><td>建议采纳率</td><td>≥ 60%</td><td>编剧采纳 / 部分采纳的建议条数占比</td></tr>
+      <tr><td>修改有效性</td><td>四维评分提升 ≥ 10 分</td><td>同一剧本修改前后自动评分 + 社员盲评交叉验证</td></tr>
+    </table>
+    </div>
+    <p class="note">口径声明：以上为方案设定的验收目标值，非已实测数据；答辩前用真实剧本完成采集后替换。</p>
+
+    <h3>7.2 风险与缓解</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:26%;">风险</th><th>缓解措施</th></tr>
+      <tr><td>LLM 输出不稳定 / 幻觉</td><td>强制 JSON Schema 结构化输出；规则引擎交叉校验；报告保留「人工复核」入口；结果按剧本缓存</td></tr>
+      <tr><td>「自然度」评分主观</td><td>评分锚定具体台词并给出对比句，不输出抽象结论；用社员标注样本校准权重</td></tr>
+      <tr><td>长剧本超出上下文窗口</td><td>按场景分块分析 + 滑动窗口汇总；WebSocket 分批回报进度，避免长等待焦虑</td></tr>
+      <tr><td>API 成本 / 演示网络不稳</td><td>本地缓存 + 预置 2 部示例剧本离线报告，答辩演示不依赖实时网络</td></tr>
+      <tr><td>6 周时间紧张</td><td>MVP 优先；逻辑检查先以规则引擎落地（不依赖 LLM 的部分先行），LLM 增强后置</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <!-- ============ 08 答辩亮点 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">08</span><h2>答辩亮点</h2><span class="en">WHY IT HOLDS UP</span></div>
+    <div class="cards">
+      <div class="card"><div class="k">① 真实需求驱动</div><div class="v">源自社团演讲中的创作难题，有明确使用者（编剧/导演/ASM）与验收标准</div></div>
+      <div class="card"><div class="k">② 非「套壳大模型」</div><div class="v">统计特征 + 规则引擎承担可复算检查，LLM 只做结构化语义判断——每层可解释、可复算、可追溯</div></div>
+      <div class="card"><div class="k">③ 可量化证明价值</div><div class="v">召回率、采纳率、修改前后分数三组指标闭环，答辩用数据说话而非「我觉得好用」</div></div>
+      <div class="card"><div class="k">④ 可扩展路径</div><div class="v">预留与排练记录方向（StageMind）的闭环：排练反馈 → 剧本修改 → 再诊断，故事完整</div></div>
+      <div class="card"><div class="k">⑤ 成本可控</div><div class="v">按场景分批调用、结果缓存、示例离线报告——学生预算内可完成，演示不依赖网络</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>ScriptDoc 剧本诊断助手 · 项目方案 V1.3 · 2026-09-07</span>
+    <span>说明：本文中评分权重、目标指标、线框内容均为方案设计值 / 占位示意，非实测数据；技术选型可按团队熟悉度调整</span>
+  </footer>
+</div>
+</body>
+</html>

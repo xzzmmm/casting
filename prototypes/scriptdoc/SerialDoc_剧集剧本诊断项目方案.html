@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SerialDoc 剧集剧本诊断助手 · 项目方案</title>
+<style>
+  :root{
+    --bg:#F6F3EC; --card:#FFFFFF; --ink:#201A30; --sub:#6A6376;
+    --accent:#6C4AB6; --accent-soft:#EDE6F8; --accent-deep:#4A2E8A;
+    --gold:#C9A227; --gold-soft:#FBF3DC; --line:#E7E1D6;
+    --ok:#2F7D46; --warn:#B45309; --bad:#B0302E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.65;font-size:15px;}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 28px 64px;}
+
+  /* header */
+  .hero{background:linear-gradient(135deg,#241A40 0%,#4A2E8A 55%,#6C4AB6 100%);border-radius:18px;padding:40px 42px;color:#fff;position:relative;overflow:hidden;}
+  .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:260px;height:260px;border-radius:50%;background:rgba(201,162,39,0.16);}
+  .hero .tag{display:inline-block;background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.25);padding:4px 14px;border-radius:999px;font-size:13px;letter-spacing:1px;}
+  .hero h1{font-size:34px;font-weight:700;margin:16px 0 8px;letter-spacing:1px;}
+  .hero h1 span{color:#E9C767;}
+  .hero .sub{font-size:15px;color:rgba(255,255,255,0.85);max-width:760px;}
+  .hero .meta{margin-top:22px;display:flex;gap:28px;flex-wrap:wrap;font-size:13px;color:rgba(255,255,255,0.75);}
+  .hero .meta b{color:#fff;font-weight:600;}
+
+  /* section */
+  section{margin-top:40px;}
+  .sec-head{display:flex;align-items:baseline;gap:14px;border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:22px;}
+  .sec-head .no{font-size:13px;font-weight:700;color:#fff;background:var(--accent);border-radius:8px;padding:3px 10px;letter-spacing:1px;}
+  .sec-head h2{font-size:23px;font-weight:700;letter-spacing:1px;}
+  .sec-head .en{font-size:12px;color:var(--sub);letter-spacing:1px;}
+
+  h3{font-size:17px;margin:26px 0 12px;color:var(--accent-deep);}
+  h4{font-size:15px;color:var(--accent-deep);margin:16px 0 8px;}
+  p{margin-bottom:10px;}
+  .lead{font-size:15.5px;color:#3A3348;}
+  .note{font-size:13px;color:var(--sub);}
+
+  /* cards */
+  .cards{display:flex;gap:16px;flex-wrap:wrap;}
+  .card{flex:1 1 200px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;min-width:0;}
+  .card .k{font-size:12.5px;color:var(--sub);margin-bottom:6px;letter-spacing:1px;}
+  .card .v{font-size:15px;font-weight:600;color:var(--ink);line-height:1.55;}
+  .card.hl{background:linear-gradient(160deg,#F4EFFB,var(--accent-soft));border-color:#D8C8F2;}
+
+  /* tables */
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px;}
+  th{background:#F0EBFB;color:var(--accent-deep);text-align:left;padding:10px 14px;font-weight:600;border-bottom:1px solid var(--line);}
+  td{padding:10px 14px;border-bottom:1px solid #F0ECE2;vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  td.c{text-align:center;}
+  .tbl-wrap{overflow-x:auto;border-radius:12px;}
+
+  /* badges */
+  .b{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;}
+  .b-bad{background:#FBE9E8;color:var(--bad);}
+  .b-mid{background:#FDF1DC;color:var(--warn);}
+  .b-ok{background:#E4F3E8;color:var(--ok);}
+  .b-purple{background:var(--accent-soft);color:var(--accent-deep);}
+
+  /* figure */
+  figure{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 16px 14px;}
+  figure figcaption{font-size:13px;color:var(--sub);margin-top:10px;text-align:center;}
+  .fig-title{font-size:15px;font-weight:600;color:var(--ink);margin-bottom:12px;text-align:center;letter-spacing:1px;}
+  svg{display:block;width:100%;height:auto;}
+
+  /* lists */
+  ul,ol{margin:6px 0 12px 22px;}
+  li{margin-bottom:6px;}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:16px;}
+  .box h4{font-size:15.5px;color:var(--accent-deep);margin-bottom:8px;}
+
+  .mile{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;}
+  .mile .m{flex:1 1 220px;background:var(--gold-soft);border:1px solid #EBD9A0;border-radius:12px;padding:12px 16px;}
+  .mile .m b{color:#8A6D12;font-size:14px;}
+  .mile .m div{font-size:13px;color:#6B5A1E;margin-top:4px;}
+
+  .reuse{background:linear-gradient(160deg,#E4F3E8,#F2FBF4);border:1px solid #BFE0C8;border-radius:14px;padding:16px 20px;margin:14px 0;}
+  .reuse b{color:var(--ok);}
+
+  footer{margin-top:48px;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px;color:var(--sub);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HERO ============ -->
+  <div class="hero">
+    <span class="tag">数据科学课程项目 · 项目方案 V1.0</span>
+    <h1>SerialDoc <span>剧集剧本诊断助手</span></h1>
+    <div class="sub">电视剧与舞台剧是两种不同的结构生物：<strong>几十集、随时可弃、靠钩子留人、多条线并行、跨集埋雷。</strong>SerialDoc 把「注水、弃剧、断线、忘伏笔」这些剧集行业的老大难，变成<strong>可定位、可量化、可修改</strong>的集级与季级诊断报告。</div>
+    <div class="meta">
+      <span>姊妹项目：<b>ScriptDoc（舞台剧版）</b></span>
+      <span>项目周期：<b>6 周 · 4 个里程碑</b></span>
+      <span>文档日期：<b>2026-09-07</b></span>
+      <span>交付形态：<b>Web 应用</b></span>
+    </div>
+  </div>
+
+  <!-- ============ 01 概述 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">01</span><h2>项目概述</h2><span class="en">OVERVIEW</span></div>
+    <p class="lead">舞台剧观众买了票会看完；电视剧观众<strong>一个不喜欢的开头就能弃剧</strong>。所以剧集剧本诊断的核心不是「哪里不好」，而是<strong>「观众会在哪里走、为什么走、怎么留」</strong>。SerialDoc 在 ScriptDoc 的混合架构（规则 + 统计 + LLM 结构化判断）之上，增加剧集独有的四类检测：<strong>分层节奏、集末钩子与弃剧点、注水检测、跨集连续性</strong>，并升级双线为<strong>多线并行</strong>结构分析。</p>
+
+    <div class="cards" style="margin-top:18px;">
+      <div class="card hl"><div class="k">一句话定位</div><div class="v">面向剧集编剧与制片团队的剧本诊断工具：分层节奏 + 弃剧点 + 注水 + 跨集伏笔追踪</div></div>
+      <div class="card"><div class="k">目标用户</div><div class="v">剧集编剧（长线结构把关）、剧本医生（story doctor）、制片（过稿前预审）</div></div>
+      <div class="card"><div class="k">核心场景</div><div class="v">全季导入 → 季总览热力图 → 弃剧风险预警 → 单集/跨集下钻 → 伏笔回收表</div></div>
+      <div class="card"><div class="k">技术亮点</div><div class="v">注水密度、钩子强度、伏笔状态机均为可复算规则；LLM 只做语义判断；可接真实追剧数据验证</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 02 问题定义 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">02</span><h2>问题定义</h2><span class="en">PROBLEM DEFINITION</span></div>
+
+    <h3>2.1 舞台剧 vs 电视剧：结构性差异决定检测维度</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:20%;">维度</th><th style="width:40%;">舞台剧（ScriptDoc）</th><th>电视剧（SerialDoc）</th></tr>
+      <tr><td>观看场景</td><td>单场 2 小时，观众基本看完</td><td>几十集 × 随时可弃，每集末尾决定是否追下一集</td></tr>
+      <tr><td>节奏层级</td><td>单层：全剧一条张力曲线</td><td><b>分层：季节奏 / 集节奏 / 场景节奏</b>，三层都要看</td></tr>
+      <tr><td>悬念机制</td><td>幕间留扣子即可</td><td><b>集末钩子（cliffhanger）</b>是留人核心，缺失=流失</td></tr>
+      <tr><td>结构</td><td>三幕式</td><td>每集小结构 + 全季大结构 + 类型公式（单元剧/连续剧）</td></tr>
+      <tr><td>并行线</td><td>通常双线</td><td><b>3~5 条线并行</b>（主线/副线/单元线），切场与遗忘是高频病</td></tr>
+      <tr><td>状态一致性</td><td>单场，跨场矛盾少见</td><td><b>跨集状态</b>：伏笔回收、人物伤病情、时间线，隔 10 集就忘</td></tr>
+      <tr><td>数据量</td><td>单剧本 2~4 万字</td><td>全季 40~120 万字 → <b>批处理流水线</b>，按集/场分片</td></tr>
+    </table>
+    </div>
+
+    <h3>2.2 痛点拆解：六类「剧集病」→ 可检测信号</h3>
+    <p class="note">原则：每一种「感觉不对」，都必须映射为至少一种可复现的检测方法，否则不进入产品范围。</p>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:16%;">痛点</th><th style="width:42%;">症状（主观感受）</th><th>检测信号（客观可复算）</th></tr>
+      <tr><td><b>注水</b></td><td>「这集没讲啥」「倍速看」「可跳过」</td><td>情节密度 = 信息事件数 / 有效时长；无信息对话占比；重复闪回率；可删场景</td></tr>
+      <tr><td><b>弃剧</b></td><td>「前三集留不住人」「开头平淡」</td><td>第 1-3 集钩子强度曲线；开场前 5 分钟信息量；每集末悬念强度</td></tr>
+      <tr><td><b>断线</b></td><td>「那条副线呢？」「这条线跟主线啥关系」</td><td>多线识别（角色-场景聚类）；线被遗忘段（单线连续 &gt;N 场）；线间关联度</td></tr>
+      <tr><td><b>忘伏笔</b></td><td>「那个钥匙呢？」「前面埋的坑没填」</td><td>伏笔状态机：埋设 → 待回收 → 回收/失效，跨集追踪未回收项</td></tr>
+      <tr><td><b>穿帮</b></td><td>「上集受伤下集好了」「时间对不上」</td><td>人物状态表跨集校验；时间线冲突检测（事件顺序/时长）</td></tr>
+      <tr><td><b>人物弧光断裂</b></td><td>「人设崩了」「第十集换人了」</td><td>长线风格漂移检测（复用人物档案，扩展到全集范围）</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <!-- ============ 03 技术架构 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">03</span><h2>技术架构</h2><span class="en">ARCHITECTURE</span></div>
+    <p class="lead">五层架构，与 ScriptDoc 同源，差异集中在<strong>数据层的「跨集索引库」</strong>与<strong>分析层的「集/季两级聚合」</strong>——这是电视剧「跨集」特性的根。</p>
+    <figure>
+      <div class="fig-title">SerialDoc 五层技术架构</div>
+      <svg viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Microsoft YaHei',sans-serif">
+        <!-- 表现层 -->
+        <rect x="60" y="16" width="800" height="58" rx="10" fill="#F4EFFB" stroke="#6C4AB6"/>
+        <text x="460" y="52" text-anchor="middle" font-size="15" font-weight="700" fill="#4A2E8A">表现层 · 季总览热力图 / 集诊断页 / 伏笔追踪表 / 多线泳道图</text>
+        <!-- 应用层 -->
+        <rect x="60" y="94" width="800" height="58" rx="10" fill="#F4EFFB" stroke="#6C4AB6"/>
+        <text x="460" y="130" text-anchor="middle" font-size="15" font-weight="700" fill="#4A2E8A">应用层 · 集报告 / 季报告 / 弃剧风险预警 / 修改前后对比</text>
+        <!-- 分析层 -->
+        <rect x="60" y="172" width="800" height="110" rx="10" fill="#FDF1DC" stroke="#C9A227"/>
+        <text x="460" y="196" text-anchor="middle" font-size="14" font-weight="700" fill="#8A6D12">分析层 · 规则引擎 + 统计特征 + LLM 结构化判断</text>
+        <rect x="80" y="208" width="180" height="60" rx="8" fill="#FFFDF5" stroke="#EBD9A0"/>
+        <text x="170" y="234" text-anchor="middle" font-size="12.5" fill="#6B5A1E">M1-M4 集结构/弃剧/注水</text>
+        <text x="170" y="252" text-anchor="middle" font-size="11.5" fill="#6B5A1E">规则+统计为主</text>
+        <rect x="276" y="208" width="180" height="60" rx="8" fill="#FFFDF5" stroke="#EBD9A0"/>
+        <text x="366" y="234" text-anchor="middle" font-size="12.5" fill="#6B5A1E">M5 伏笔状态机</text>
+        <text x="366" y="252" text-anchor="middle" font-size="11.5" fill="#6B5A1E">规则（可追踪）</text>
+        <rect x="472" y="208" width="180" height="60" rx="8" fill="#FFFDF5" stroke="#EBD9A0"/>
+        <text x="562" y="234" text-anchor="middle" font-size="12.5" fill="#6B5A1E">M6-M7 台词/幽默/中二</text>
+        <text x="562" y="252" text-anchor="middle" font-size="11.5" fill="#6B5A1E">复用 ScriptDoc 引擎</text>
+        <rect x="668" y="208" width="172" height="60" rx="8" fill="#FFFDF5" stroke="#EBD9A0"/>
+        <text x="754" y="234" text-anchor="middle" font-size="12.5" fill="#6B5A1E">M8 类型公式</text>
+        <text x="754" y="252" text-anchor="middle" font-size="11.5" fill="#6B5A1E">LLM 语义判断</text>
+        <!-- 数据层 -->
+        <rect x="60" y="302" width="800" height="58" rx="10" fill="#FBF3DC" stroke="#C9A227"/>
+        <text x="460" y="338" text-anchor="middle" font-size="15" font-weight="700" fill="#8A6D12">数据层 · 分集场景/台词库 + 跨集索引库（伏笔库 / 人物状态表 / 时间线）</text>
+        <!-- 接入层 -->
+        <rect x="60" y="380" width="800" height="58" rx="10" fill="#E4F3E8" stroke="#52C41A"/>
+        <text x="460" y="416" text-anchor="middle" font-size="15" font-weight="700" fill="#2F7D46">接入层 · 分集剧本上传（txt/docx/pdf，可批量）/ 版本管理 / 导出报告</text>
+      </svg>
+      <figcaption>图 1 · 五层架构（紫=表现/应用，金=分析/数据，绿=接入）。跨集索引库是电视剧版独有的数据资产。</figcaption>
+    </figure>
+
+    <div class="reuse"><b>直接复用 ScriptDoc：</b>中二度规则引擎（chuuni_engine，25 项测试通过）、幽默分析三维（幽默×冒犯×含蓄）、场景张力统计、人物档案。剧集版不重写台词层，只做规模适配与跨集扩展。</div>
+  </section>
+
+  <!-- ============ 04 数据流水线 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">04</span><h2>数据流水线</h2><span class="en">PIPELINE</span></div>
+    <figure>
+      <div class="fig-title">分集批处理六步流水线（40~120 万字全季）</div>
+      <svg viewBox="0 0 920 250" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Microsoft YaHei',sans-serif">
+        <defs>
+          <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#6C4AB6"/></marker>
+        </defs>
+        <g font-size="12.5" text-anchor="middle">
+          <rect x="20" y="90" width="120" height="62" rx="10" fill="#F4EFFB" stroke="#6C4AB6"/><text x="80" y="116" fill="#4A2E8A" font-weight="700">① 分集导入</text><text x="80" y="134" fill="#6A6376" font-size="11">批量上传/分集识别</text>
+          <rect x="172" y="90" width="120" height="62" rx="10" fill="#F4EFFB" stroke="#6C4AB6"/><text x="232" y="116" fill="#4A2E8A" font-weight="700">② 结构解析</text><text x="232" y="134" fill="#6A6376" font-size="11">集/场/台词/舞台指示</text>
+          <rect x="324" y="90" width="120" height="62" rx="10" fill="#FDF1DC" stroke="#C9A227"/><text x="384" y="116" fill="#8A6D12" font-weight="700">③ 跨集索引</text><text x="384" y="134" fill="#6A6376" font-size="11">伏笔/人物状态/时间线</text>
+          <rect x="476" y="90" width="120" height="62" rx="10" fill="#FDF1DC" stroke="#C9A227"/><text x="536" y="116" fill="#8A6D12" font-weight="700">④ 模块分析</text><text x="536" y="134" fill="#6A6376" font-size="11">M1-M8 并行/按集分片</text>
+          <rect x="628" y="90" width="120" height="62" rx="10" fill="#E4F3E8" stroke="#52C41A"/><text x="688" y="116" fill="#2F7D46" font-weight="700">⑤ 集报告</text><text x="688" y="134" fill="#6A6376" font-size="11">每集结构/钩子/注水</text>
+          <rect x="780" y="90" width="120" height="62" rx="10" fill="#E4F3E8" stroke="#52C41A"/><text x="840" y="116" fill="#2F7D46" font-weight="700">⑥ 季总览</text><text x="840" y="134" fill="#6A6376" font-size="11">热力图/弃剧风险/伏笔表</text>
+          <line x1="140" y1="121" x2="172" y2="121" stroke="#6C4AB6" stroke-width="2" marker-end="url(#arr)"/>
+          <line x1="292" y1="121" x2="324" y2="121" stroke="#6C4AB6" stroke-width="2" marker-end="url(#arr)"/>
+          <line x1="444" y1="121" x2="476" y2="121" stroke="#6C4AB6" stroke-width="2" marker-end="url(#arr)"/>
+          <line x1="596" y1="121" x2="628" y2="121" stroke="#6C4AB6" stroke-width="2" marker-end="url(#arr)"/>
+          <line x1="748" y1="121" x2="780" y2="121" stroke="#6C4AB6" stroke-width="2" marker-end="url(#arr)"/>
+        </g>
+        <text x="460" y="215" text-anchor="middle" font-size="12.5" fill="#6A6376">长任务：40+ 集剧本分批处理，进度提示 + 断点续跑；③ 跨集索引是「伏笔追踪」的数据根基</text>
+      </svg>
+      <figcaption>图 2 · 六步数据流水线（与 ScriptDoc 相比，③跨集索引与⑥季总览为新增）</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ 05 核心模块 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">05</span><h2>核心模块</h2><span class="en">MODULES</span></div>
+    <div class="cards">
+      <div class="card"><div class="k">M1 · 集结构诊断</div><div class="v">每集三幕结构完整度、开场钩子、集末悬念（cliffhanger）强度——「能不能留住人看下一集」</div></div>
+      <div class="card hl"><div class="k">M2 · 弃剧点风险</div><div class="v">第 1-3 集聚焦：前 5 分钟信息量、钩子密度曲线、弃剧风险分——「观众会不会点进来」</div></div>
+      <div class="card"><div class="k">M3 · 多线并行</div><div class="v">N 线识别（角色-场景聚类）、切换节奏、线被遗忘段、线间关联、结尾交汇</div></div>
+      <div class="card"><div class="k">M4 · 注水检测</div><div class="v">情节密度、无信息对话占比、重复闪回率、可删场景——「哪段可以倍速/跳过」</div></div>
+      <div class="card"><div class="k">M5 · 跨集连续性</div><div class="v">伏笔状态机（埋设→待回收→回收/失效）、人物状态表校验、时间线冲突——「坑填没填、穿没穿帮」</div></div>
+      <div class="card"><div class="k">M6 · 角色弧光</div><div class="v">长线成长曲线、风格漂移（跨全集）、口头禅漂移——「人设崩没崩」</div></div>
+      <div class="card"><div class="k">M7 · 台词质量</div><div class="v">中二度 / 幽默分析（幽默×冒犯×含蓄）/ 自然度——直接复用 ScriptDoc 引擎</div></div>
+      <div class="card"><div class="k">M8 · 类型公式</div><div class="v">单元剧 vs 连续剧模式识别；医疗/职场剧每集「病例+主角线」公式符合度</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 06 详细设计 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">06</span><h2>详细设计</h2><span class="en">DETAILED DESIGN</span></div>
+
+    <h3>6.1 M2 弃剧点风险（剧集版最核心模块）</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>开场 5 分钟信息量</td><td>第 1 集开场 5 分钟（约 8-10 场前）信息事件数 &lt;3 → 「开局平淡」；&lt;1 → 高弃剧风险</td><td>规则（复用信息密度统计）</td></tr>
+      <tr><td>集末悬念强度</td><td>每集末 3 场内无未解悬念 → 钩子缺失；悬念类型分：情节钩 / 情感钩 / 笑点钩</td><td>LLM（悬念识别）+ 规则（位置判定）</td></tr>
+      <tr><td>第 1-3 集钩子曲线</td><td>三集钩子强度单调不升 → 「前紧后松」流失风险；第 1 集钩子为全集最弱 → 高风险</td><td>统计（三集钩子强度对比）</td></tr>
+      <tr><td>弃剧风险分</td><td>风险分 = 加权（开场信息量 0.3 + 集末悬念 0.4 + 钩子曲线 0.3），0-100</td><td>规则（可复算）</td></tr>
+    </table>
+    </div>
+
+    <h3>6.2 M4 注水检测（可复算的统计量）</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>情节密度</td><td>密度 = 信息事件数 / 有效时长；低于全集密度 40% 分位的场景 → 疑似注水</td><td>规则（事件抽取+统计）</td></tr>
+      <tr><td>无信息对话占比</td><td>寒暄/重复/空转对话行占比 &gt;35% → 注水预警</td><td>规则 + LLM（复用空转判定）</td></tr>
+      <tr><td>重复闪回率</td><td>同一回忆片段被复述 ≥3 次且无新信息 → 注水；闪回是否推进信息</td><td>LLM（语义相似度判定）</td></tr>
+      <tr><td>可删场景</td><td>删去后不影响主线/副线/人物关系的场景 → 「可删」标记（不自动删，只建议）</td><td>LLM（因果影响判断）</td></tr>
+    </table>
+    </div>
+
+    <h3>6.3 M5 跨集连续性 · 伏笔状态机（答辩「规则可追踪」亮点）</h3>
+    <div class="box">
+      <h4>伏笔生命周期</h4>
+      <p><span class="b b-purple">埋设</span>（第 N 集出现未解释元素）→ <span class="b b-mid">待回收</span>（跨集仍无解释）→ <span class="b b-ok">回收</span>（后续集给出解释）／ <span class="b b-bad">失效</span>（明确废弃或烂尾）</p>
+      <p style="margin-top:8px;">跨集追踪：元素出现 → 记录唯一 ID → 每集扫描是否被解释/重提 → 全集结束时输出<strong>「未回收伏笔清单」</strong>，按埋设集排序，标出「已 10 集未回收」的雷。</p>
+    </div>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>伏笔识别与追踪</td><td>埋设元素（道具/台词/人物秘密）→ 跨集状态机；全集未回收且埋设已过 1/2 全季 → 烂尾预警</td><td>规则（状态机）+ LLM（识别）</td></tr>
+      <tr><td>人物状态一致性</td><td>伤病情/关系状态/能力状态跨集冲突（如上集重伤下集完好）→ 穿帮</td><td>规则（状态表比对）</td></tr>
+      <tr><td>时间线冲突</td><td>事件顺序倒置、跨集时长不匹配（一天内完成三集旅程）→ 时间穿帮</td><td>规则 + LLM（时序推理）</td></tr>
+    </table>
+    </div>
+
+    <h3>6.4 M3 多线并行（由双线升级为 N 线）</h3>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:22%;">检测信号</th><th style="width:46%;">判据 / 阈值（设计值）</th><th>实现方式</th></tr>
+      <tr><td>线识别</td><td>角色—场景共现矩阵聚类 → 自动分出主线/副线/单元线（N 条）</td><td>规则（聚类，可复算）</td></tr>
+      <tr><td>线被遗忘段</td><td>任一条线连续缺席 ≥4 集 → 「副线失踪」预警</td><td>统计</td></tr>
+      <tr><td>切换节奏</td><td>平均每集切换次数 &gt;6 且无悬念动机 → 切太碎；单线霸屏 ≥3 集 → 失衡</td><td>统计 + LLM（动机判断）</td></tr>
+      <tr><td>结尾交汇</td><td>季末各线是否收束；主线与 50%+ 副线未交汇 → 结构残缺</td><td>LLM + 规则</td></tr>
+    </table>
+    </div>
+
+    <h3>6.5 输出形态</h3>
+    <div class="box">
+      <ul>
+        <li><b>季总览热力图</b>：横轴集数 × 纵轴指标（张力/钩子/注水/笑点），一眼看全季健康度——答辩主视觉</li>
+        <li><b>弃剧风险报告</b>：第 1-3 集专项，含前 5 分钟分析与集末钩子清单</li>
+        <li><b>伏笔回收表</b>：埋设集 / 内容 / 回收集 / 状态，未回收项置顶标红</li>
+        <li><b>多线泳道图</b>：N 线沿全集时间轴展开，标注切换点与失踪段</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ 07 界面原型 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">07</span><h2>界面原型</h2><span class="en">UI PROTOTYPE</span></div>
+    <p class="note">共 5 个页面，按「整季导入 → 季总览 → 下钻」组织。以下为线框示意（非最终视觉稿）。</p>
+    <figure>
+      <div class="fig-title">五个页面线框（示意）</div>
+      <svg viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" font-family="'PingFang SC','Microsoft YaHei',sans-serif">
+        <g font-size="12" fill="#4A2E8A" font-weight="700">
+          <text x="80" y="30" text-anchor="middle">P1 整季导入页</text>
+          <text x="310" y="30" text-anchor="middle">P2 季总览热力图</text>
+          <text x="540" y="30" text-anchor="middle">P3 集诊断页</text>
+          <text x="770" y="30" text-anchor="middle">P4 伏笔追踪表</text>
+        </g>
+        <g stroke="#D8C8F2" fill="#F4EFFB">
+          <rect x="20" y="40" width="130" height="200" rx="10"/>
+          <rect x="190" y="40" width="250" height="200" rx="10"/>
+          <rect x="420" y="40" width="250" height="200" rx="10"/>
+          <rect x="650" y="40" width="250" height="200" rx="10"/>
+        </g>
+        <g font-size="11" fill="#6A6376">
+          <!-- P1 -->
+          <text x="35" y="70">拖入全季剧本</text>
+          <text x="35" y="88">(txt/docx/pdf 批量)</text>
+          <rect x="35" y="110" width="100" height="26" rx="6" fill="#6C4AB6"/>
+          <text x="85" y="127" text-anchor="middle" fill="#fff" font-weight="700">开始诊断</text>
+          <text x="35" y="160">自动分集识别</text>
+          <text x="35" y="178">进度：12/24 集</text>
+          <text x="35" y="196">断点续跑 ✓</text>
+          <!-- P2 -->
+          <text x="205" y="70">热力图：行=指标 列=集</text>
+          <rect x="205" y="85" width="220" height="90" rx="6" fill="#FDF1DC" stroke="#EBD9A0"/>
+          <text x="315" y="120" text-anchor="middle" fill="#8A6D12">张力 ▇▇▂▃▇▅▂▄▇</text>
+          <text x="315" y="138" text-anchor="middle" fill="#8A6D12">钩子 ▂▃▂▄▅▃▇▆</text>
+          <text x="315" y="156" text-anchor="middle" fill="#8A6D12">注水 ▅▂▄▃▂▅▇▃</text>
+          <text x="205" y="200">⚠ 第 6-7 集注水偏高</text>
+          <text x="205" y="218">⚠ 第 1-3 集钩子偏弱</text>
+          <!-- P3 -->
+          <text x="435" y="70">第 5 集 · 结构总览</text>
+          <rect x="435" y="85" width="220" height="90" rx="6" fill="#EDE6F8" stroke="#D8C8F2"/>
+          <text x="545" y="115" text-anchor="middle" fill="#4A2E8A">三幕完整度 78%</text>
+          <text x="545" y="133" text-anchor="middle" fill="#4A2E8A">集末钩子 强 ✓</text>
+          <text x="545" y="151" text-anchor="middle" fill="#4A2E8A">注水段：第 3 场</text>
+          <text x="435" y="200">定位：第 3 场 12-15 行</text>
+          <text x="435" y="218">建议：删对话 / 加冲突</text>
+          <!-- P4 -->
+          <text x="665" y="70">伏笔回收状态表</text>
+          <rect x="665" y="85" width="220" height="90" rx="6" fill="#FBE9E8" stroke="#EBD9A0"/>
+          <text x="775" y="112" text-anchor="middle" fill="#B0302E">「钥匙」E2 埋 → 未回收 ✗</text>
+          <text x="775" y="130" text-anchor="middle" fill="#2F7D46">「戒指」E3 埋 → E9 回收 ✓</text>
+          <text x="775" y="148" text-anchor="middle" fill="#B45309">「密信」E1 埋 → 10 集未回收 ⚠</text>
+          <text x="665" y="200">按埋设集排序·置顶未回收</text>
+        </g>
+        <!-- P5 多线视图 -->
+        <g>
+          <text x="460" y="280" text-anchor="middle" font-size="12" fill="#4A2E8A" font-weight="700">P5 多线并行泳道图</text>
+          <rect x="60" y="296" width="800" height="180" rx="10" fill="#F4EFFB" stroke="#D8C8F2"/>
+          <g font-size="11.5">
+            <text x="80" y="325" fill="#6C4AB6" font-weight="700">主线</text>
+            <rect x="130" y="310" width="90" height="24" rx="6" fill="#EDE6F8" stroke="#6C4AB6"/>
+            <rect x="300" y="310" width="90" height="24" rx="6" fill="#EDE6F8" stroke="#6C4AB6"/>
+            <rect x="500" y="310" width="90" height="24" rx="6" fill="#EDE6F8" stroke="#6C4AB6"/>
+            <rect x="700" y="310" width="90" height="24" rx="6" fill="#EDE6F8" stroke="#6C4AB6"/>
+            <text x="175" y="327" text-anchor="middle" fill="#4A2E8A">E1-E3</text>
+            <text x="345" y="327" text-anchor="middle" fill="#4A2E8A">E5-E7</text>
+            <text x="545" y="327" text-anchor="middle" fill="#4A2E8A">E9-E11</text>
+            <text x="745" y="327" text-anchor="middle" fill="#4A2E8A">E13-E15</text>
+
+            <text x="80" y="375" fill="#B45309" font-weight="700">副线</text>
+            <rect x="130" y="360" width="90" height="24" rx="6" fill="#FDF1DC" stroke="#C9A227"/>
+            <rect x="390" y="360" width="90" height="24" rx="6" fill="#FDF1DC" stroke="#C9A227"/>
+            <rect x="610" y="360" width="90" height="24" rx="6" fill="#FDF1DC" stroke="#C9A227"/>
+            <text x="175" y="377" text-anchor="middle" fill="#8A6D12">E2-E4</text>
+            <text x="435" y="377" text-anchor="middle" fill="#8A6D12">E8-E10</text>
+            <text x="655" y="377" text-anchor="middle" fill="#8A6D12">E12-E14</text>
+
+            <text x="80" y="425" fill="#B0302E" font-weight="700">单元线</text>
+            <rect x="220" y="410" width="90" height="24" rx="6" fill="#FBE9E8" stroke="#EBD9A0"/>
+            <text x="265" y="427" text-anchor="middle" fill="#B0302E">E6-E8</text>
+
+            <text x="560" y="455" fill="#B0302E" font-weight="700">⚠ 副线 E5-E7 缺席（失踪 3 集）</text>
+          </g>
+        </g>
+      </svg>
+      <figcaption>图 3 · P1 整季导入 → P2 季热力图 → P3 集诊断 → P4 伏笔追踪 → P5 多线泳道；P2/P4 中的分数与状态均为线框占位示意，非真实诊断结果</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ 08 实施计划 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">08</span><h2>实施计划</h2><span class="en">PLAN</span></div>
+    <div class="mile">
+      <div class="m"><b>M1 · 第 1-2 周</b><div>分集解析 + 跨集索引库（伏笔/状态/时间线 schema）</div></div>
+      <div class="m"><b>M2 · 第 2-4 周</b><div>注水检测 + 弃剧点（复用 chuuni/幽默引擎）</div></div>
+      <div class="m"><b>M3 · 第 4-5 周</b><div>伏笔状态机 + 多线聚类 + 季热力图前端</div></div>
+      <div class="m"><b>M4 · 第 5-6 周</b><div>标注集采集 + 指标校准 + 答辩材料</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 09 验收指标 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">09</span><h2>验收指标</h2><span class="en">METRICS</span></div>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:26%;">指标</th><th style="width:18%;">目标值</th><th>度量方式</th></tr>
+      <tr><td>注水场景检出召回率</td><td>≥ 70%</td><td>与编剧/制片人工标注的注水场景对比</td></tr>
+      <tr><td>伏笔回收追踪准确率</td><td>≥ 80%</td><td>状态机结果 vs 人工伏笔清单逐项核对</td></tr>
+      <tr><td>切换生硬点检出率</td><td>≥ 75%</td><td>与人工标注的多线切换点对比</td></tr>
+      <tr><td>弃剧风险分有效性</td><td>AUC ≥ 0.7（目标）</td><td>与真实追剧留存数据对比（若能获取；否则退化为编剧打分相关性）</td></tr>
+      <tr><td>建议采纳率</td><td>≥ 50%</td><td>编剧采纳 / 部分采纳建议条数占比</td></tr>
+    </table>
+    </div>
+    <p class="note">口径声明：以上为方案设定的验收目标值，非已实测数据；答辩前用真实剧本完成标注采集后替换。弃剧风险分的 AUC 目标依赖外部留存数据可得性，作为「若可获取」的加分项而非硬指标。</p>
+  </section>
+
+  <!-- ============ 10 答辩亮点 ============ -->
+  <section>
+    <div class="sec-head"><span class="no">10</span><h2>答辩亮点</h2><span class="en">HIGHLIGHTS</span></div>
+    <div class="tbl-wrap">
+    <table>
+      <tr><th style="width:26%;">亮点</th><th style="width:44%;">论证</th><th>对应用户/评委痛点</th></tr>
+      <tr><td>分层节奏是剧集独有</td><td>季 / 集 / 场三层节奏各有一套检测，舞台剧方案只有一层——不是复制粘贴，是结构适配</td><td>「这个方案跟舞台剧版有什么不同」</td></tr>
+      <tr><td>注水密度可复算</td><td>情节密度 = 信息事件数 / 有效时长，纯统计量，任何人可复算</td><td>「是不是套壳大模型」</td></tr>
+      <tr><td>伏笔状态机可追踪</td><td>埋设 → 待回收 → 回收 / 失效，每条伏笔有唯一 ID 与状态流转，报告可逐条核对</td><td>「检测结果凭什么信」</td></tr>
+      <tr><td>可接真实数据验证</td><td>弃剧风险分可对接平台留存/弹幕数据做 AUC 验证——数据科学含量比纯文本分析更硬</td><td>「有没有数据科学方法」</td></tr>
+      <tr><td>引擎复用率</td><td>台词层（中二度/幽默）直接复用 ScriptDoc，架构上体现「一个平台、两种体裁」</td><td>「工程量与深度」</td></tr>
+    </table>
+    </div>
+  </section>
+
+  <footer>
+    <span>SerialDoc 剧集剧本诊断助手 · 项目方案 V1.0 · 2026-09-07</span>
+    <span>姊妹项目：ScriptDoc（舞台剧版）</span>
+  </footer>
+
+</div>
+</body>
+</html>
