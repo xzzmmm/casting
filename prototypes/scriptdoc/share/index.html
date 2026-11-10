@@ -20,10 +20,12 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--background); color: var(--text); font: 15px/1.6 var(--sans); }
-    button { font: inherit; cursor: pointer; }
+    button, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    [hidden] { display: none !important; }
     a { color: var(--warm); text-underline-offset: .2em; }
     :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
-    .shell { width: min(1100px, 100% - 40px); margin-inline: auto; }
+    .shell { width: min(1240px, 100% - 40px); margin-inline: auto; }
     header { padding: 17px 0; background: var(--panel); border-bottom: 1px solid var(--line); }
     .brand { display: flex; align-items: center; gap: 12px; }
     .mark { padding: 4px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; font: 600 12px/1.7 Consolas, monospace; color: var(--warm); }
@@ -34,74 +36,144 @@
     h1 { margin: 5px 0 8px; color: var(--warm); font: 700 clamp(30px, 6vw, 48px)/1.2 var(--serif); }
     h2, h3, p { margin-top: 0; }
     .lede, .muted { color: var(--muted); }
-    .presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 16px; }
-    .presets button { padding: 7px 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; text-align: left; }
-    .presets button:hover, .script-line:hover { border-color: var(--muted); }
-    .presets button[aria-pressed="true"] { background: var(--warm); color: #1a1915; border-color: var(--warm); font-weight: 700; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 22px 0 14px; }
+    .toolbar p { margin: 0; }
+    .button { padding: 7px 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+    .button:hover, .script-line:hover { border-color: var(--muted); }
+    .button.primary { background: var(--warm); color: #1a1915; border-color: var(--warm); font-weight: 700; }
+    .button:disabled { opacity: .55; cursor: wait; }
+    .layout { display: grid; grid-template-columns: minmax(170px, .68fr) minmax(0, 1.35fr) minmax(0, 1.25fr); gap: 14px; align-items: start; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
     .panel-head { padding: 10px 15px; border-bottom: 1px solid var(--line); }
     .panel-head h2 { margin: 0; font-size: 14px; color: var(--muted); }
     .panel-body { padding: 16px; }
-    .scene-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
-    .scene-meta p { margin-bottom: 0; }
-    .scene-meta strong { font-size: 18px; }
+    .scene-meta { display: grid; gap: 3px; margin-top: 14px; }
+    .scene-meta p { margin: 0; }
     .score { color: var(--amber); font: 700 26px/1.1 Consolas, monospace; font-variant-numeric: tabular-nums; }
     .score small { font-size: 12px; color: var(--muted); }
+    .field { display: grid; gap: 5px; margin-bottom: 12px; }
+    .field label { color: var(--muted); font-size: 13px; }
+    select, textarea { color: var(--text); background: #101214; border: 1px solid var(--line); border-radius: 6px; width: 100%; padding: 7px 8px; }
+    textarea { resize: vertical; min-height: 118px; }
+    .paste { margin-bottom: 14px; }
+    .paste summary { cursor: pointer; padding: 10px 15px; color: var(--warm); }
+    .paste .panel-body { border-top: 1px solid var(--line); }
+    .form-row { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 12px; }
+    .form-row .field { margin: 0; }
+    #analysis-status { margin: 9px 0 0; }
     .lines { display: grid; gap: 7px; }
-    .script-line { display: grid; width: 100%; grid-template-columns: 2ch minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: #101214; text-align: left; }
+    .script-line { display: grid; width: 100%; grid-template-columns: minmax(3ch, auto) minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: #101214; text-align: left; }
     .script-line[aria-pressed="true"] { border-color: var(--amber); background: #2c2a25; }
-    .line-number, .line-score { font: 14px Consolas, monospace; color: var(--muted); }
-    .line-text { font: 17px/1.6 var(--serif); }
+    .line-number, .line-score { font: 13px Consolas, var(--sans); color: var(--muted); }
+    .line-speaker { display: block; color: var(--muted); font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+    .line-text { display: block; font: 16px/1.55 var(--serif); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .script-line[data-kind="direction"] .line-text { color: #afc2e4; font-size: 14px; }
+    .script-line[data-kind="unassigned"] .line-text { color: var(--muted); font-size: 14px; }
     .detail-score { margin-bottom: 8px; font-weight: 700; }
-    .detail-title { margin: 13px 0 5px; font-size: 14px; }
+    .detail-title { margin: 13px 0 5px; font-size: 14px; color: var(--warm); }
+    .context { display: grid; gap: 6px; margin: 0; }
+    .context div { display: grid; grid-template-columns: 3em minmax(0, 1fr); gap: 8px; }
+    .context dt { color: var(--muted); }
+    .context dd { margin: 0; overflow-wrap: anywhere; }
+    .rehearsal-note { margin: 0; padding: 8px 11px; background: #2c2a25; border-left: 2px solid var(--amber); white-space: pre-wrap; overflow-wrap: anywhere; }
     ul { padding-left: 21px; margin: 0; }
     li + li { margin-top: 4px; }
     footer { margin-top: 16px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
     footer p { margin-bottom: 6px; }
     footer p:last-child { margin-bottom: 0; }
-    @media (max-width: 690px) {
+    @media (max-width: 950px) {
+      .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .navigation { grid-column: 1 / -1; }
+      .navigation .panel-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .navigation .field, .scene-meta { margin: 0; }
+    }
+    @media (max-width: 650px) {
       .shell { width: calc(100% - 24px); }
       main { padding-top: 25px; }
       .layout { grid-template-columns: minmax(0, 1fr); }
+      .navigation .panel-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .scene-meta { grid-column: 1 / -1; }
     }
   </style>
 </head>
 <body>
   <header>
-    <div class="shell brand"><span class="mark" aria-hidden="true">SD</span><strong>ScriptDoc</strong><span>离线演示</span></div>
+    <div class="shell brand"><span class="mark" aria-hidden="true">SD</span><strong>ScriptDoc</strong><span id="mode-label">离线示例</span></div>
   </header>
   <main class="shell">
     <p class="eyebrow">台词风格诊断</p>
-    <h1>读台词，也看情境</h1>
-    <p class="lede">切换合成示例，比较同一句台词在日常场景和反派高潮里的诊断结果。</p>
-    <div id="presets" class="presets" role="group" aria-label="选择示例"></div>
-    <div class="layout">
-      <section class="panel" aria-labelledby="scene-heading">
-        <div class="panel-head"><h2 id="scene-heading">场景与台词</h2></div>
-        <div class="panel-body">
-          <div class="scene-meta" aria-live="polite">
-            <div><p><strong id="scene-label"></strong></p><p id="scene-context" class="muted"></p></div>
-            <div class="score" aria-label="场景分数"><span id="scene-score"></span><small> / 100</small></div>
+    <h1>剧本围读台</h1>
+    <p class="lede">选择场次、角色和台词，核对前后对白、舞台提示与排练笔记。</p>
+    <div class="toolbar">
+      <p id="data-source" class="muted">合成示例 · Python 规则引擎预先分析</p>
+      <button type="button" class="button" id="reset-demo" hidden>返回合成示例</button>
+    </div>
+    <details id="paste-panel" class="panel paste" open hidden>
+      <summary>粘贴剧本并分析</summary>
+      <form id="paste-form" class="panel-body">
+        <div class="field">
+          <label for="script-text">剧本原文</label>
+          <textarea id="script-text" rows="5" required placeholder="第一幕&#10;第一场&#10;【灯光渐亮】&#10;小叶：准备好了吗？&#10;小青：再等一会儿。"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label for="scene-type">默认场景类型</label>
+            <select id="scene-type">
+              <option value="daily">日常场景</option>
+              <option value="climax">高潮场景</option>
+              <option value="villain_entrance">反派登场</option>
+            </select>
           </div>
+          <button id="analyze" class="button primary" type="submit">分析剧本</button>
+        </div>
+        <p id="analysis-status" role="status" class="muted"></p>
+      </form>
+    </details>
+    <div class="layout">
+      <aside class="panel navigation" aria-labelledby="navigation-heading">
+        <div class="panel-head"><h2 id="navigation-heading">场次与角色</h2></div>
+        <div class="panel-body">
+          <div class="field"><label for="scene-select">场次</label><select id="scene-select"></select></div>
+          <div class="field"><label for="role-select">角色</label><select id="role-select"></select></div>
+          <div class="scene-meta" aria-live="polite">
+            <div class="score" aria-label="场景分数"><span id="scene-score"></span><small id="scene-score-unit"> / 100</small></div>
+            <p id="scene-context" class="muted"></p>
+          </div>
+        </div>
+      </aside>
+      <section class="panel" aria-labelledby="transcript-heading">
+        <div class="panel-head"><h2 id="transcript-heading">剧本原文</h2></div>
+        <div class="panel-body">
           <div id="lines" class="lines" role="group" aria-label="选择台词"></div>
         </div>
       </section>
       <section class="panel" aria-labelledby="detail-heading">
-        <div class="panel-head"><h2 id="detail-heading">命中依据与修改建议</h2></div>
-        <div class="panel-body" aria-live="polite">
-          <div id="line-score" class="detail-score"></div>
+        <div class="panel-head"><h2 id="detail-heading">上下文与排练笔记</h2></div>
+        <div class="panel-body">
+          <div id="line-score" class="detail-score" aria-live="polite"></div>
           <p id="line-action" class="muted"></p>
-          <h3 class="detail-title">规则命中</h3>
-          <ul id="signals"></ul>
-          <h3 class="detail-title">修改建议</h3>
-          <ul id="suggestions"></ul>
+          <div id="dialogue-review" hidden>
+            <h3 class="detail-title">前后对白</h3>
+            <dl class="context">
+              <div><dt>上一句</dt><dd id="previous-line"></dd></div>
+              <div><dt>下一句</dt><dd id="next-line"></dd></div>
+            </dl>
+            <h3 class="detail-title">附近舞台提示</h3>
+            <ul id="stage-directions"></ul>
+            <h3 class="detail-title">排练笔记</h3>
+            <p id="rehearsal-note" class="rehearsal-note"></p>
+            <h3 class="detail-title">台词风格信号</h3>
+            <ul id="signals"></ul>
+            <h3 class="detail-title">修改建议</h3>
+            <ul id="suggestions"></ul>
+          </div>
         </div>
       </section>
     </div>
     <footer>
-      <p>分数和依据由 Python 规则引擎预先生成。新台词请用项目中的 <a href="../README.md">Python 原型</a> 分析。</p>
-      <p><a href="../SerialDoc_剧集剧本诊断项目方案.html">SerialDoc</a> 是连续剧诊断方案。<a href="README.md">演示说明</a></p>
+      <p id="offline-help">离线页面可围读预置示例。分析新剧本时，请按 <a href="../README.md">启动说明</a> 启动本地服务并打开首页。</p>
+      <p id="project-links"><a href="../SerialDoc_剧集剧本诊断项目方案.html">SerialDoc</a> 是连续剧诊断方案。<a href="README.md">演示说明</a></p>
+      <p id="service-help" hidden>分析使用本地规则引擎。台词风格分数是排练参考，排练笔记以剧本原文为依据。</p>
     </footer>
   </main>
   <noscript>请启用 JavaScript 以切换示例和台词。</noscript>
@@ -115,10 +187,55 @@
   <script>
     const byId = (id) => document.getElementById(id);
     const samples = JSON.parse(byId('sample-data').textContent);
+    const demoAnnotations = [
+      {
+        directions: ['门口还亮着工作灯。', '两人对视片刻。'],
+        notes: ['把停顿落在「这事」之后，再看向对方。', '听完「不能再瞒了」再接话，「晚饭你请」沿用日常说话的节奏。'],
+      },
+      {
+        directions: ['两人站在排练桌前。', '对面的人没有回答。'],
+        notes: ['读到「终将在此终结」时，明确这句话说给桌对面的人听。', '等对面的人沉默一拍，再把重音落在「觉悟」。'],
+      },
+      {
+        directions: ['灯光收成一道侧光。', '对手退到舞台边缘。'],
+        notes: ['侧光亮起后再说「我的命运」，把尾句说给正在后退的对手。', '等对手退到台边后再接「这就是」，把重音留给「觉悟」。'],
+      },
+    ];
     const signalNames = {
       wordlist_hit: '夸张词汇', absolutism: '绝对化用语', exclamation: '感叹号',
       abstract_heavy: '抽象词密度', template_hit: '宣言句式', long_line: '长句',
     };
+    const sceneTypes = { daily: '日常场景', climax: '高潮场景', villain_entrance: '反派登场' };
+    const kindLabels = { direction: '舞台提示', unassigned: '未分配角色的原文' };
+    const sceneSelect = byId('scene-select');
+    const roleSelect = byId('role-select');
+    const resetDemo = byId('reset-demo');
+    const source = byId('data-source');
+    const status = byId('analysis-status');
+    let scenes = [];
+
+    const demoScenes = samples.map((sample, index) => {
+      const annotation = demoAnnotations[index];
+      const directions = annotation.directions.map((text, position) => ({
+        line_no: position * 2 + 1, text, kind: 'direction', score: null,
+      }));
+      const dialogues = sample.result.per_line.map((line, position) => ({
+        ...line, line_no: position * 2 + 2, speaker: ['小叶', '小青'][position], kind: 'dialogue',
+      }));
+      const perLine = dialogues.flatMap((line, position) => [directions[position], {
+        ...line,
+        context: {
+          previous: dialogues[position - 1] ?? null,
+          next: dialogues[position + 1] ?? null,
+          stage_directions: [directions[position]],
+        },
+        rehearsal_note: annotation.notes[position],
+      }]);
+      return {
+        ...sample.result, act_title: '合成示例', scene_title: sample.label,
+        scene_type: sample.sceneType, context_label: sample.context, per_line: perLine,
+      };
+    });
 
     function element(tag, text, className = '') {
       const node = document.createElement(tag);
@@ -127,46 +244,140 @@
       return node;
     }
 
+    function option(text, value) {
+      const node = element('option', text);
+      node.value = value;
+      return node;
+    }
+
     function showList(id, items, emptyText) {
       byId(id).replaceChildren(...(items.length ? items : [emptyText]).map((item) => element('li', item)));
     }
 
+    function contextText(line, fallback) {
+      return line ? `第 ${line.line_no} 行 · ${line.speaker} · ${line.text}` : fallback;
+    }
+
     function showLine(line, selected) {
-      for (const button of byId('lines').children) {
+      for (const button of byId('lines').querySelectorAll('.script-line')) {
         button.setAttribute('aria-pressed', String(button === selected));
       }
-      byId('line-score').textContent = `第 ${line.line_no} 句 · ${line.score.toFixed(1)} 分 · ${line.level}`;
+      const dialogue = line?.kind === 'dialogue';
+      byId('dialogue-review').hidden = !dialogue;
+      if (!line) {
+        byId('line-score').textContent = '当前没有可查看的原文';
+        byId('line-action').textContent = '';
+        return;
+      }
+      if (!dialogue) {
+        byId('line-score').textContent = `第 ${line.line_no} 行 · ${kindLabels[line.kind] ?? '原文'}`;
+        byId('line-action').textContent = line.text;
+        return;
+      }
+      const score = Number.isFinite(line.score) ? `${line.score.toFixed(1)} 分 · ${line.level}` : '暂无风格评分';
+      byId('line-score').textContent = `第 ${line.line_no} 行 · ${line.speaker} · ${score}`;
       byId('line-action').textContent = line.level_action;
-      showList('signals', line.signals.map((signal) => `${signalNames[signal.type]} · ${signal.evidence.join('、')}`), '本句没有命中规则');
+      const context = line.context ?? {};
+      byId('previous-line').textContent = contextText(context.previous, '本句之前没有对白');
+      byId('next-line').textContent = contextText(context.next, '本句之后没有对白');
+      showList('stage-directions', (context.stage_directions ?? []).map((item) => `第 ${item.line_no} 行 · ${item.text}`), '附近没有舞台提示');
+      byId('rehearsal-note').textContent = line.rehearsal_note || '此句暂无排练笔记';
+      showList('signals', line.signals.map((signal) => `${signalNames[signal.type] ?? signal.type} · ${signal.evidence.join('、')}`), '本句没有命中规则');
       showList('suggestions', line.suggestion, '本句暂无修改建议');
     }
 
-    function showSample(sample, selected) {
-      for (const button of byId('presets').children) {
-        button.setAttribute('aria-pressed', String(button === selected));
-      }
-      const result = sample.result;
-      byId('scene-label').textContent = sample.label;
-      byId('scene-context').textContent = `${sample.context} · ${result.scene_level} · ${result.flagged_count} 句标记`;
-      byId('scene-score').textContent = result.scene_score.toFixed(1);
-      const buttons = result.per_line.map((line) => {
+    function showLines() {
+      const scene = scenes[sceneSelect.selectedIndex];
+      const role = roleSelect.value;
+      const lines = role ? scene.per_line.filter((line) => line.kind === 'dialogue' && line.speaker === role) : scene.per_line;
+      const buttons = lines.map((line) => {
         const button = element('button', '', 'script-line');
         button.type = 'button';
-        button.append(element('span', line.line_no, 'line-number'), element('span', line.text, 'line-text'), element('span', line.score.toFixed(1), 'line-score'));
+        button.dataset.kind = line.kind;
+        const body = element('span', '');
+        body.append(element('span', line.speaker || kindLabels[line.kind] || '原文', 'line-speaker'), element('span', line.text, 'line-text'));
+        const score = Number.isFinite(line.score) ? line.score.toFixed(1) : '';
+        button.append(element('span', line.line_no, 'line-number'), body, element('span', score, 'line-score'));
         button.addEventListener('click', () => showLine(line, button));
         return button;
       });
-      byId('lines').replaceChildren(...buttons);
-      showLine(result.per_line[0], buttons[0]);
+      byId('lines').replaceChildren(...(buttons.length ? buttons : [element('p', '当前场次没有可查看的原文。', 'muted')]));
+      const firstDialogue = lines.findIndex((line) => line.kind === 'dialogue');
+      const selected = Math.max(0, firstDialogue);
+      showLine(lines[selected], buttons[selected]);
     }
 
-    for (const sample of samples) {
-      const button = element('button', sample.label);
-      button.type = 'button';
-      button.addEventListener('click', () => showSample(sample, button));
-      byId('presets').append(button);
+    function showScene() {
+      const scene = scenes[sceneSelect.selectedIndex];
+      const roles = [...new Set(scene.per_line.filter((line) => line.kind === 'dialogue').map((line) => line.speaker))];
+      roleSelect.replaceChildren(option('全部角色', ''), ...roles.map((role) => option(role, role)));
+      const scored = Number.isFinite(scene.scene_score) && scene.per_line.some((line) => Number.isFinite(line.score));
+      byId('scene-score').textContent = scored ? scene.scene_score.toFixed(1) : '—';
+      byId('scene-score-unit').hidden = !scored;
+      const type = scene.context_label ?? sceneTypes[scene.scene_type] ?? scene.scene_type;
+      byId('scene-context').textContent = scored ? `${type} · ${scene.scene_level} · ${scene.flagged_count} 句标记` : '暂无场景评分';
+      showLines();
     }
-    showSample(samples[1], byId('presets').children[1]);
+
+    function showSource(nextScenes, live) {
+      scenes = nextScenes;
+      source.textContent = live ? '本次分析 · 本地 Python 规则引擎' : '合成示例 · Python 规则引擎预先分析';
+      resetDemo.hidden = !live;
+      sceneSelect.replaceChildren(...scenes.map((scene, index) => {
+        const title = scene.scene_title || `场次 ${index + 1}`;
+        return option([scene.act_title, title].filter(Boolean).join(' / '), index);
+      }));
+      const firstSpokenScene = scenes.findIndex((scene) => scene.per_line.some((line) => line.kind === 'dialogue'));
+      sceneSelect.selectedIndex = live ? Math.max(0, firstSpokenScene) : 1;
+      showScene();
+    }
+
+    sceneSelect.addEventListener('change', showScene);
+    roleSelect.addEventListener('change', showLines);
+    resetDemo.addEventListener('click', () => {
+      status.textContent = '';
+      showSource(demoScenes, false);
+    });
+
+    const served = /^https?:$/.test(location.protocol) && location.pathname === '/';
+    byId('paste-panel').hidden = !served;
+    byId('offline-help').hidden = served;
+    byId('project-links').hidden = served;
+    byId('service-help').hidden = !served;
+    byId('mode-label').textContent = served ? '本地分析' : '离线示例';
+    byId('paste-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const text = byId('script-text').value;
+      if (!text.trim()) {
+        status.textContent = '请先粘贴剧本文本。';
+        return;
+      }
+      const analyze = byId('analyze');
+      analyze.disabled = resetDemo.disabled = true;
+      status.textContent = '正在分析剧本…';
+      try {
+        const response = await fetch('/api/analysis/script', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, scene_type: byId('scene-type').value }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(typeof payload?.detail === 'string' ? payload.detail : `分析请求失败（HTTP ${response.status}）。`);
+        }
+        if (!Array.isArray(payload?.scenes) || !payload.scenes.length) {
+          throw new Error('没有可显示的场次。');
+        }
+        showSource(payload.scenes, true);
+        status.textContent = `已分析 ${payload.scenes.length} 个场次。`;
+      } catch (error) {
+        status.textContent = `分析失败。${error.message}`;
+      } finally {
+        analyze.disabled = resetDemo.disabled = false;
+      }
+    });
+
+    showSource(demoScenes, false);
   </script>
 </body>
 </html>

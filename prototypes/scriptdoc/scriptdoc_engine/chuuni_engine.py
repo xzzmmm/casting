@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,48 @@ try:
     HAS_JIEBA = True
 except ImportError:
     HAS_JIEBA = False
+
+
+_STAGE_ONLY = re.compile(r"(?:【[^【】]+】|（[^（）]+）|\[[^\[\]]+\]|\([^()]+\))")
+_LEADING_DELIVERY = re.compile(r"^\s*(?:（([^（）]+)）|\(([^()]+)\))\s*")
+_INLINE_STAGE = re.compile(r"【([^【】]+)】")
+
+
+def _line_kind(line: dict) -> str:
+    text = line["text"].strip()
+    if line.get("kind"):
+        return line["kind"]
+    if not text:
+        return "unassigned"
+    return "direction" if _STAGE_ONLY.fullmatch(text) else "dialogue"
+
+
+def _spoken_text(text: str) -> tuple[str, list[str]]:
+    notes = _INLINE_STAGE.findall(text)
+    delivery = _LEADING_DELIVERY.match(text)
+    if delivery:
+        notes.insert(0, delivery[1] or delivery[2])
+        text = text[delivery.end():]
+    return _INLINE_STAGE.sub(" ", text).strip(), notes
+
+
+def _cue(line: dict) -> dict:
+    return {"line_no": line["line_no"], "speaker": line.get("speaker", ""), "text": line["text"]}
+
+
+def _rehearsal_note(text: str, notes: list[str], context: dict, speaker: str) -> str:
+    if notes:
+        return f"按原文提示「{notes[0]}」试读，再听搭档接话。"
+    if text.rstrip().endswith(("？", "?")):
+        return "保留问句的停顿，给对方留出回答的空间。"
+    if re.search(r"[！!]", text):
+        return "对照前后句试读两遍，比较加重关键词和单纯提高音量的效果。"
+    previous = context["previous"]
+    if previous and previous["speaker"] not in ("", speaker):
+        return "听完前一句再接话，试着让重音回应上一句的关键信息。"
+    if context["next"]:
+        return "从本句的具体动作或信息出发试读，并观察下一句怎样承接。"
+    return "按自然语速试读，标出句内需要停顿或加重的地方。"
 
 
 @dataclass
@@ -112,9 +155,9 @@ class ChuuniRuleEngine:
         return lex, syn
 
     def _exclaim_ratio(self, text: str) -> float:
-        marks = sum(1 for c in text if c in "！!？?")
-        exclaims = sum(1 for c in text if c in "！!")
-        return exclaims / marks if marks else 0.0
+        endings = re.findall(r"[。！？!?]+|\.+(?=\s|$)", text)
+        exclaims = sum(any(mark in ending for mark in "！!") for ending in endings)
+        return exclaims / len(endings) if endings else 0.0
 
     def _abstract_ratio(self, text: str) -> float | None:
         """抽象名词占比 = 命中抽象词数 / 总名词数；无 jieba 时返回 None（跳过该信号）。"""
@@ -171,38 +214,68 @@ class ChuuniRuleEngine:
     # ---------------- 对外接口 ----------------
     def analyze_line(self, line: dict, scene_type: str = "daily",
                      role_type: str = "protagonist",
-                     semantic: float | None = None) -> dict:
+                     semantic: float | None = None, *, context: dict | None = None) -> dict:
         """分析单句台词 → {line_no, speaker, text, score, level, signals, suggestion}"""
-        text = line["text"]
-        lexical, syntax = self.detect(text)
+        kind = _line_kind(line)
+        context = context or {"previous": None, "next": None, "stage_directions": []}
+        result = {**_cue(line), "kind": kind, "context": context}
+        if kind != "dialogue":
+            note = "保留为舞台提示，供前后对白排练时参照。" if kind == "direction" else "请先确认这行的说话人或用途。"
+            return {**result, "score": None, "level": "待核对" if kind == "unassigned" else "舞台提示",
+                    "level_action": note, "signals": [], "suggestion": [], "rehearsal_note": note}
+
+        speech, notes = _spoken_text(line["text"])
+        lexical, syntax = self.detect(speech)
         parts = self.score(lexical, syntax, semantic)
-        final = round(min(100.0, parts["raw"] * self.calibration(role_type, scene_type)), 1)
+        multiplier = self.calibration(role_type, scene_type)
+        final = round(min(100.0, parts["raw"] * multiplier), 1)
         level, action = self.level_of(final)
-        return {
-            "line_no": line["line_no"],
-            "speaker": line.get("speaker", ""),
-            "text": text,
-            "score": final,
-            "level": level,
-            "level_action": action,
-            "signals": [{"type": s.type, "evidence": s.evidence} for s in lexical + syntax],
-            "suggestion": self._suggest(lexical + syntax),
-        }
+        signals = lexical + syntax
+        return {**result, "spoken_text": speech, "role_type": role_type, "score": final,
+                "score_basis": {**parts, "scene_type": scene_type, "multiplier": multiplier},
+                "level": level, "level_action": action,
+                "signals": [{"type": s.type, "evidence": s.evidence} for s in signals],
+                "suggestion": self._suggest(signals),
+                "rehearsal_note": _rehearsal_note(speech, notes, context, result["speaker"])}
 
     def analyze_scene(self, scene: dict, semantic_by_line: dict[int, float] | None = None) -> dict:
         """分析整场 → {scene_id, scene_score, scene_level, per_line}"""
         semantic_by_line = semantic_by_line or {}
+        source = scene["lines"]
+        kinds = [_line_kind(line) for line in source]
+        spoken = [index for index, kind in enumerate(kinds) if kind == "dialogue"]
+        character = scene.get("character") or {}
+        role_types = scene.get("role_types") or {}
+        scene_type = scene.get("scene_type", "daily")
         lines = []
-        for line in scene["lines"]:
+        for index, line in enumerate(source):
+            before = bisect_left(spoken, index)
+            after = before + (kinds[index] == "dialogue")
+            previous = spoken[before - 1] if before else None
+            following = spoken[after] if after < len(spoken) else None
+            start = max(0 if previous is None else previous + 1, index - 3)
+            end = min(len(source) if following is None else following, index + 4)
+            context = {
+                "previous": _cue(source[previous]) if previous is not None else None,
+                "next": _cue(source[following]) if following is not None else None,
+                "stage_directions": [
+                    {"line_no": source[i]["line_no"], "text": source[i]["text"]}
+                    for i in range(start, end) if i != index and kinds[i] == "direction"
+                ],
+            }
+            speaker = line.get("speaker", "")
+            default_role = character.get("role_type", "protagonist") if character.get("name") in (None, "", speaker) else "protagonist"
             lines.append(self.analyze_line(
                 line,
-                scene_type=scene.get("scene_type", "daily"),
-                role_type=scene.get("character", {}).get("role_type", "protagonist"),
+                scene_type=scene_type,
+                role_type=line.get("role_type") or role_types.get(speaker, default_role),
                 semantic=semantic_by_line.get(line["line_no"]),
+                context=context,
             ))
-        scores = [l["score"] for l in lines]
+        scores = [line["score"] for line in lines if line["score"] is not None]
         scene_score = round(sum(scores) / len(scores), 1) if scores else 0.0
         level, _ = self.level_of(scene_score)
-        flagged = sum(1 for l in lines if l["level"] != "正常")
-        return {"scene_id": scene.get("scene_id"), "scene_score": scene_score,
+        flagged = sum(1 for line in lines if line["score"] is not None and line["level"] != "正常")
+        return {"scene_id": scene.get("scene_id"), "act_title": scene.get("act_title", ""),
+                "scene_title": scene.get("scene_title", ""), "scene_type": scene_type, "scene_score": scene_score,
                 "scene_level": level, "flagged_count": flagged, "per_line": lines}

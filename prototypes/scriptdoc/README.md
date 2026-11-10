@@ -1,6 +1,6 @@
 # ScriptDoc / SerialDoc
 
-ScriptDoc 的原型为中文剧本提供台词风格诊断。规则引擎标记夸张措辞和句式，结合角色与场景校准得分，并返回命中依据和修改建议。调用方可以提供额外的语义分数。SerialDoc 是面向连续剧的诊断方案。
+ScriptDoc 为中文剧本提供台词风格诊断。读剧页面按幕、场、角色和原文行组织对白，显示前后接话、附近的舞台提示、规则依据和排练建议。规则得分反映措辞与句式信号，可按说话人和场景校准，供人工复核。SerialDoc 是面向连续剧的诊断方案。
 
 - [ScriptDoc 项目方案](ScriptDoc_剧本诊断项目方案.html)
 - [SerialDoc 项目方案](SerialDoc_剧集剧本诊断项目方案.html)
@@ -21,4 +21,8 @@ python -m pip install -r requirements.txt
 python -m uvicorn api:app --app-dir scriptdoc_engine --host 127.0.0.1 --port 8000
 ```
 
-本地接口文档为 `http://127.0.0.1:8000/docs`，诊断接口为 `POST /api/analysis/chuuni`。词表、权重和情境校准参数位于 `scriptdoc_engine/config/chuuni_config.json`。
+启动后访问 `http://127.0.0.1:8000/`，可粘贴带有 `角色：台词` 标记的剧本文本。下载仓库后双击 [`share/index.html`](share/index.html) 可以查看离线示例。
+
+`POST /api/analysis/script` 接收 `text`、可选的 `scene_type` 和按角色名索引的 `role_types`。遇到未识别的说话人，页面会保留原文行号并标为待核对。舞台提示和待核对行不计入场景均分。结构化输入仍使用 `POST /api/analysis/chuuni`，也可提供额外语义分数。完整接口文档位于 `http://127.0.0.1:8000/docs`。
+
+读剧流程参考 [Curtain Up](https://curtainup.app/en) 的场景和角色组织方式。ScriptDoc 的语气和排练建议来自可复核的文字规则。词表、权重和校准参数位于 `scriptdoc_engine/config/chuuni_config.json`。

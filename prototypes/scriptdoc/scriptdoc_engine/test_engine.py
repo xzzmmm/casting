@@ -7,6 +7,7 @@
 import sys
 
 from chuuni_engine import ChuuniRuleEngine
+from script_input import parse_script
 
 if sys.stdout and sys.stdout.encoding and "utf" not in sys.stdout.encoding.lower():
     sys.stdout.reconfigure(encoding="utf-8")
@@ -95,6 +96,33 @@ def test_suggestion_present():
     check("命中台词带降档建议", len(r["suggestion"]) >= 1)
 
 
+def test_script_review():
+    text = "\n".join(("编剧：合成示例", "第一幕第一场：门厅", "阿 青：（低声）你要去哪儿？",
+                      "【灯光渐暗！】", "小林：我的命运，终将在此终结！", "等待进一步确认",
+                      "第二场", "阿青：我们从这里开始。"))
+    scenes = parse_script(text)
+    first, second = scenes[-2:]
+    result = engine.analyze_scene({**first, "role_types": {"小林": "villain"}})
+    question, direction, reply, unassigned = result["per_line"]
+    check("中文幕场标题与原文行号保留",
+          first["act_title"] == "第一幕" and second["scene_title"] == "第二场" and question["line_no"] == 3)
+    check("相邻对白跳过舞台提示，保留前后线索",
+          question["context"]["next"]["speaker"] == "小林"
+          and reply["context"]["previous"]["speaker"] == "阿青"
+          and reply["context"]["stage_directions"][0]["line_no"] == 4)
+    check("舞台提示与待核对行不参与场景评分",
+          direction["kind"] == "direction" and unassigned["kind"] == "unassigned"
+          and direction["score"] is None and unassigned["score"] is None
+          and result["scene_score"] == round((question["score"] + reply["score"]) / 2, 1))
+    check("语气提示保留原文，评分只计算对白",
+          "低声" in question["rehearsal_note"] and question["spoken_text"] == "你要去哪儿？")
+    check("角色校准按说话人应用",
+          question["score_basis"]["multiplier"] == 1.3 and reply["score_basis"]["multiplier"] == 0.6)
+    check("下一场独立建立对白上下文", engine.analyze_scene(second)["per_line"][0]["context"]["previous"] is None)
+    lex, _ = engine.detect("快走！我随后来。把门带上。我们在门口见。")
+    check("感叹比例包含句号，避免多句对白误判", all(signal.type != "exclamation" for signal in lex))
+
+
 def test_api_smoke():
     try:
         from fastapi.testclient import TestClient
@@ -113,6 +141,9 @@ def test_api_smoke():
     r = client.post("/api/analysis/chuuni", json=payload)
     check("API 冒烟：200 且含 per_line", r.status_code == 200 and "per_line" in r.json())
     check("API 冒烟：健康检查", client.get("/health").json()["status"] == "ok")
+    r = client.post("/api/analysis/script", json={"text": "第一场\n甲：你还好吗？\n乙：我没事。"})
+    check("API 冒烟：剧本入口返回角色与接话提示",
+          r.status_code == 200 and r.json()["scenes"][0]["per_line"][0]["context"]["next"]["speaker"] == "乙")
 
 
 if __name__ == "__main__":
@@ -127,5 +158,6 @@ if __name__ == "__main__":
     test_calibration_chuuni_exemption()
     test_levels()
     test_suggestion_present()
+    test_script_review()
     test_api_smoke()
     print(f"\n共 {passed} 项通过")
