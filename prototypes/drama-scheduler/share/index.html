@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DramaScheduler · 排练排期演示</title>
+<style>
+  :root{color-scheme:dark;--ink:#e9e6df;--muted:#b3b4b5;--panel:#1a1d20;--line:#393c41;--accent:#f3ecdc;--blue:#9abbe3}
+  *{box-sizing:border-box}
+  body{min-height:100vh;margin:0;color:var(--ink);background:radial-gradient(ellipse at 35% 0%,#3b3024,transparent 42rem),radial-gradient(ellipse at 98% 65%,#1b2b42,transparent 46rem),#141618;font:15px/1.55 DengXian,"Microsoft YaHei","PingFang SC",sans-serif}
+  main{width:min(100%,1150px);margin:auto;padding:clamp(24px,5vw,64px) 18px 48px}
+  h1,h2,p{margin:0}h1{font-size:clamp(30px,5vw,48px);line-height:1.15}h2{font-size:16px}
+  header p,.fine{color:var(--muted)}header p{margin-top:10px;max-width:63ch}
+  .tag{display:inline-block;margin-bottom:12px;color:var(--accent);font-size:12px;font-weight:700;letter-spacing:.14em}
+  .panel{margin-top:22px;padding:18px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 12px 36px #0005}
+  .toolbar,.options,.stats{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+  .toolbar{justify-content:space-between}.options{gap:6px}
+  button{font:inherit;cursor:pointer;padding:8px 12px;border:1px solid var(--line);border-radius:7px;background:#24272c;color:var(--ink)}
+  button[aria-pressed=true],#csv{background:var(--accent);border-color:var(--accent);color:#191814;font-weight:700}
+  button:disabled{opacity:.45;cursor:default}:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .stats{margin:16px 0;color:var(--muted)}.stats strong{color:var(--accent);margin-right:.3em;font-size:17px}
+  .calendar{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,126px),1fr));gap:8px}
+  .day{min-width:0;border:1px solid var(--line);border-radius:8px;background:#15181b;overflow:hidden}
+  .day h2{padding:8px 10px;background:#24272b;border-bottom:1px solid var(--line)}
+  .slot{min-height:80px;padding:8px 9px;border-top:1px solid #292d31}.slot:first-of-type{border-top:0}
+  .slot-time,.slot small{font-size:12px;color:var(--muted)}.slot strong{display:block;color:var(--blue);font-size:13px}
+  .slot small{display:block}.notice{padding:18px;border-left:3px solid #d4a867;background:#302820;border-radius:6px}
+  .fine{margin-top:12px;font-size:13px}a{color:var(--blue)}
+  [hidden]{display:none!important}
+</style>
+<main>
+  <header>
+    <span class="tag">DRAMASCHEDULER · OFFLINE DEMO</span>
+    <h1>《纸灯》排练排期</h1>
+    <p>用 8 位虚构成员的可用时段，查看每日排练时长上限如何影响排期结果。</p>
+  </header>
+
+  <section class="panel" aria-labelledby="conditions">
+    <div class="toolbar">
+      <h2 id="conditions">每日排练时长上限</h2>
+      <div class="options" aria-label="预设时长">
+        <button type="button" data-limit="2" aria-pressed="false">2 小时</button>
+        <button type="button" data-limit="3" aria-pressed="false">3 小时</button>
+        <button type="button" data-limit="4" aria-pressed="true">4 小时</button>
+      </div>
+      <button id="csv" type="button">下载示例 CSV</button>
+    </div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+    <div id="schedule"></div>
+    <p class="fine">页面展示 OR-Tools CP-SAT 对合成排班表的预计算结果。要用自己的表重新求解，请按 <a href="../README.md">本地运行说明</a> 启动排期工具。</p>
+  </section>
+</main>
+<script type="application/json" id="demo-data">{"2":{"ok":false,"status":"INFEASIBLE","infeasible_hint":{"type":"relax_day_limit","suggest":5},"schedule":[],"conflicts":[]},"3":{"ok":false,"status":"INFEASIBLE","infeasible_hint":{"type":"relax_day_limit","suggest":5},"schedule":[],"conflicts":[]},"4":{"ok":true,"status":"OPTIMAL","schedule":[{"task_id":"R2","task_name":"《纸灯》二幕","slot":1,"slot_name":"周一午","day":"周一","slot_part":"午","dur":2,"actors":["吴九","周八","张三","李四","王五","赵六"]},{"task_id":"R1","task_name":"《纸灯》一幕","slot":2,"slot_name":"周一晚","day":"周一","slot_part":"晚","dur":2,"actors":["孙七","张三","李四","王五"]},{"task_id":"R3","task_name":"《纸灯》三幕","slot":3,"slot_name":"周二早","day":"周二","slot_part":"早","dur":2,"actors":["吴九","孙七","张三","李四","王五","赵六","郑十"]},{"task_id":"R2","task_name":"《纸灯》二幕","slot":4,"slot_name":"周二午","day":"周二","slot_part":"午","dur":2,"actors":["吴九","周八","张三","李四","王五","赵六"]},{"task_id":"R1","task_name":"《纸灯》一幕","slot":6,"slot_name":"周三早","day":"周三","slot_part":"早","dur":2,"actors":["孙七","张三","李四","王五"]},{"task_id":"R1","task_name":"《纸灯》一幕","slot":7,"slot_name":"周三午","day":"周三","slot_part":"午","dur":2,"actors":["孙七","张三","李四","王五"]},{"task_id":"R5","task_name":"技术联排（灯光/场务）","slot":9,"slot_name":"周四早","day":"周四","slot_part":"早","dur":1,"actors":["张三","李四","郑十"]},{"task_id":"R2","task_name":"《纸灯》二幕","slot":10,"slot_name":"周四午","day":"周四","slot_part":"午","dur":2,"actors":["吴九","周八","张三","李四","王五","赵六"]},{"task_id":"R4","task_name":"走位彩排（全员）","slot":11,"slot_name":"周四晚","day":"周四","slot_part":"晚","dur":1,"actors":["吴九","周八","孙七","张三","李四","王五","赵六","郑十"]},{"task_id":"R3","task_name":"《纸灯》三幕","slot":12,"slot_name":"周五早","day":"周五","slot_part":"早","dur":2,"actors":["吴九","孙七","张三","李四","王五","赵六","郑十"]}],"conflicts":[],"total_req":10,"infeasible_hint":null}}</script>
+<script>
+  const results = JSON.parse(document.getElementById('demo-data').textContent);
+  const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const parts = ['早', '午', '晚'];
+  const schedule = document.getElementById('schedule');
+  const stats = document.getElementById('stats');
+  const csv = document.getElementById('csv');
+  const options = [...document.querySelectorAll('[data-limit]')];
+  let active = '4';
+
+  function node(tag, text, className) {
+    const element = document.createElement(tag);
+    element.textContent = text;
+    if (className) element.className = className;
+    return element;
+  }
+
+  function metric(value, label) {
+    const item = node('span', label);
+    item.prepend(node('strong', value));
+    return item;
+  }
+
+  function render(limit) {
+    active = limit;
+    const result = results[limit];
+    for (const option of options) option.setAttribute('aria-pressed', String(option.dataset.limit === limit));
+    csv.disabled = !result.ok;
+    schedule.replaceChildren();
+    if (!result.ok) {
+      stats.replaceChildren(metric('无解', '求解结果'));
+      schedule.append(node('p', '在这个时长上限下，无法同时满足排练次数和成员可用时段。切换到 4 小时可以查看同一份样例的可行排期。', 'notice'));
+      return;
+    }
+    stats.replaceChildren(metric('8', '成员'), metric(`${result.schedule.length}/${result.total_req}`, '已安排场次'), metric(result.conflicts.length, '成员冲突'));
+    const calendar = node('div', '', 'calendar');
+    for (const day of days) {
+      const column = node('section', '', 'day');
+      column.append(node('h2', day));
+      for (const part of parts) {
+        const slot = node('div', '', 'slot');
+        slot.append(node('span', part, 'slot-time'));
+        const bookings = result.schedule.filter(item => item.slot_name === `${day}${part}`);
+        for (const booking of bookings) {
+          slot.append(node('strong', booking.task_name), node('small', `${booking.dur} 小时 · ${booking.actors.length} 人`));
+        }
+        if (bookings.length === 0) slot.append(node('small', '空档'));
+        column.append(slot);
+      }
+      calendar.append(column);
+    }
+    schedule.append(calendar);
+  }
+
+  for (const option of options) option.addEventListener('click', () => render(option.dataset.limit));
+  csv.addEventListener('click', () => {
+    const rows = [['排练任务', '时段', '时长（小时）', '参与成员'], ...results[active].schedule.map(
+      item => [item.task_name, item.slot_name, item.dur, item.actors.join('、')],
+    )];
+    const quote = value => `"${String(value).replaceAll('"', '""')}"`;
+    const contents = rows.map(row => row.map(quote).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\ufeff', contents], {type: 'text/csv;charset=utf-8'}));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'drama-scheduler-demo.csv';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  render(active);
+</script>
+</html>

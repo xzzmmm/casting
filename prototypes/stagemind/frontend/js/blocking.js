@@ -10,10 +10,13 @@ const BlockingView = {
 
     const canvas = document.getElementById("blocking-canvas");
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#f7f4ec";
+    const palette = getComputedStyle(canvas);
+    ctx.fillStyle = palette.getPropertyValue("--stage").trim();
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#6b7280";
+    ctx.fillStyle = palette.getPropertyValue("--muted").trim();
     ctx.font = "14px sans-serif";
-    ctx.fillText("舞台俯视（待接入数据）", 340, 240);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("舞台俯视（待接入数据）", canvas.width / 2, canvas.height / 2);
   },
 };

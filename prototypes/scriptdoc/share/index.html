@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ScriptDoc · 剧本诊断演示</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #141618;
+      --panel: #1a1d20;
+      --surface: #22262a;
+      --line: #343a40;
+      --text: #e9e6df;
+      --muted: #a9adb1;
+      --warm: #f3ecdc;
+      --amber: #f0b33a;
+      --sans: "DengXian", "Microsoft YaHei", "PingFang SC", sans-serif;
+      --serif: "Noto Serif SC", "Songti SC", SimSun, serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--background); color: var(--text); font: 15px/1.6 var(--sans); }
+    button { font: inherit; cursor: pointer; }
+    a { color: var(--warm); text-underline-offset: .2em; }
+    :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+    .shell { width: min(1100px, 100% - 40px); margin-inline: auto; }
+    header { padding: 17px 0; background: var(--panel); border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .mark { padding: 4px 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 5px; font: 600 12px/1.7 Consolas, monospace; color: var(--warm); }
+    .brand strong { font-size: 18px; letter-spacing: .02em; }
+    .brand span:last-child { margin-left: auto; color: var(--muted); font-size: 13px; }
+    main { padding-block: 34px 38px; }
+    .eyebrow { margin: 0; color: var(--amber); font: 600 12px/1.6 Consolas, var(--sans); letter-spacing: .09em; }
+    h1 { margin: 5px 0 8px; color: var(--warm); font: 700 clamp(30px, 6vw, 48px)/1.2 var(--serif); }
+    h2, h3, p { margin-top: 0; }
+    .lede, .muted { color: var(--muted); }
+    .presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 16px; }
+    .presets button { padding: 7px 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; text-align: left; }
+    .presets button:hover, .script-line:hover { border-color: var(--muted); }
+    .presets button[aria-pressed="true"] { background: var(--warm); color: #1a1915; border-color: var(--warm); font-weight: 700; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 14px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
+    .panel-head { padding: 10px 15px; border-bottom: 1px solid var(--line); }
+    .panel-head h2 { margin: 0; font-size: 14px; color: var(--muted); }
+    .panel-body { padding: 16px; }
+    .scene-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .scene-meta p { margin-bottom: 0; }
+    .scene-meta strong { font-size: 18px; }
+    .score { color: var(--amber); font: 700 26px/1.1 Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .score small { font-size: 12px; color: var(--muted); }
+    .lines { display: grid; gap: 7px; }
+    .script-line { display: grid; width: 100%; grid-template-columns: 2ch minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: #101214; text-align: left; }
+    .script-line[aria-pressed="true"] { border-color: var(--amber); background: #2c2a25; }
+    .line-number, .line-score { font: 14px Consolas, monospace; color: var(--muted); }
+    .line-text { font: 17px/1.6 var(--serif); }
+    .detail-score { margin-bottom: 8px; font-weight: 700; }
+    .detail-title { margin: 13px 0 5px; font-size: 14px; }
+    ul { padding-left: 21px; margin: 0; }
+    li + li { margin-top: 4px; }
+    footer { margin-top: 16px; padding: 12px 15px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); }
+    footer p { margin-bottom: 6px; }
+    footer p:last-child { margin-bottom: 0; }
+    @media (max-width: 690px) {
+      .shell { width: calc(100% - 24px); }
+      main { padding-top: 25px; }
+      .layout { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="shell brand"><span class="mark" aria-hidden="true">SD</span><strong>ScriptDoc</strong><span>离线演示</span></div>
+  </header>
+  <main class="shell">
+    <p class="eyebrow">台词风格诊断</p>
+    <h1>读台词，也看情境</h1>
+    <p class="lede">切换合成示例，比较同一句台词在日常场景和反派高潮里的诊断结果。</p>
+    <div id="presets" class="presets" role="group" aria-label="选择示例"></div>
+    <div class="layout">
+      <section class="panel" aria-labelledby="scene-heading">
+        <div class="panel-head"><h2 id="scene-heading">场景与台词</h2></div>
+        <div class="panel-body">
+          <div class="scene-meta" aria-live="polite">
+            <div><p><strong id="scene-label"></strong></p><p id="scene-context" class="muted"></p></div>
+            <div class="score" aria-label="场景分数"><span id="scene-score"></span><small> / 100</small></div>
+          </div>
+          <div id="lines" class="lines" role="group" aria-label="选择台词"></div>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="detail-heading">
+        <div class="panel-head"><h2 id="detail-heading">命中依据与修改建议</h2></div>
+        <div class="panel-body" aria-live="polite">
+          <div id="line-score" class="detail-score"></div>
+          <p id="line-action" class="muted"></p>
+          <h3 class="detail-title">规则命中</h3>
+          <ul id="signals"></ul>
+          <h3 class="detail-title">修改建议</h3>
+          <ul id="suggestions"></ul>
+        </div>
+      </section>
+    </div>
+    <footer>
+      <p>分数和依据由 Python 规则引擎预先生成。新台词请用项目中的 <a href="../README.md">Python 原型</a> 分析。</p>
+      <p><a href="../SerialDoc_剧集剧本诊断项目方案.html">SerialDoc</a> 是连续剧诊断方案。<a href="README.md">演示说明</a></p>
+    </footer>
+  </main>
+  <noscript>请启用 JavaScript 以切换示例和台词。</noscript>
+  <script id="sample-data" type="application/json">
+[
+  {"label":"日常对话","context":"主角 · 日常场景","role":"protagonist","sceneType":"daily","result":{"scene_id":"daily","scene_score":0.0,"scene_level":"正常","flagged_count":0,"per_line":[{"line_no":1,"speaker":"示例角色","text":"这事，你不能再瞒了。","score":0.0,"level":"正常","level_action":"无需处理","signals":[],"suggestion":[]},{"line_no":2,"speaker":"示例角色","text":"行，那晚饭你请。","score":0.0,"level":"正常","level_action":"无需处理","signals":[],"suggestion":[]}]}},
+  {"label":"夸张宣言 · 日常场景","context":"主角 · 日常场景","role":"protagonist","sceneType":"daily","result":{"scene_id":"heightened","scene_score":61.8,"scene_level":"明显中二","flagged_count":2,"per_line":[{"line_no":1,"speaker":"示例角色","text":"我的命运，终将在此终结！","score":78.0,"level":"明显中二","level_action":"定位 + 信号证据 + 降档建议","signals":[{"type":"wordlist_hit","evidence":["命运","终结"]},{"type":"exclamation","evidence":["感叹号占比 100%"]},{"type":"template_hit","evidence":["……的命运……"]}],"suggestion":["大词换小词：把「命运、终结」换成具体事件或口语词","情绪降档：感叹号改句号，极端情绪词降级","宣言句式：改写成具体动作或细节，或插入对方打断"]},{"line_no":2,"speaker":"示例角色","text":"这就是我的觉悟！","score":45.5,"level":"偶发","level_action":"提示级：单句标注，不打断阅读","signals":[{"type":"exclamation","evidence":["感叹号占比 100%"]},{"type":"template_hit","evidence":["这就是……（力量/觉悟/意志）"]}],"suggestion":["情绪降档：感叹号改句号，极端情绪词降级","宣言句式：改写成具体动作或细节，或插入对方打断"]}]}},
+  {"label":"同一组台词 · 反派高潮","context":"反派 · 高潮场景","role":"villain","sceneType":"climax","result":{"scene_id":"climax","scene_score":28.5,"scene_level":"正常","flagged_count":1,"per_line":[{"line_no":1,"speaker":"示例角色","text":"我的命运，终将在此终结！","score":36.0,"level":"偶发","level_action":"提示级：单句标注，不打断阅读","signals":[{"type":"wordlist_hit","evidence":["命运","终结"]},{"type":"exclamation","evidence":["感叹号占比 100%"]},{"type":"template_hit","evidence":["……的命运……"]}],"suggestion":["大词换小词：把「命运、终结」换成具体事件或口语词","情绪降档：感叹号改句号，极端情绪词降级","宣言句式：改写成具体动作或细节，或插入对方打断"]},{"line_no":2,"speaker":"示例角色","text":"这就是我的觉悟！","score":21.0,"level":"正常","level_action":"无需处理","signals":[{"type":"exclamation","evidence":["感叹号占比 100%"]},{"type":"template_hit","evidence":["这就是……（力量/觉悟/意志）"]}],"suggestion":["情绪降档：感叹号改句号，极端情绪词降级","宣言句式：改写成具体动作或细节，或插入对方打断"]}]}}
+]
+  </script>
+  <script>
+    const byId = (id) => document.getElementById(id);
+    const samples = JSON.parse(byId('sample-data').textContent);
+    const signalNames = {
+      wordlist_hit: '夸张词汇', absolutism: '绝对化用语', exclamation: '感叹号',
+      abstract_heavy: '抽象词密度', template_hit: '宣言句式', long_line: '长句',
+    };
+
+    function element(tag, text, className = '') {
+      const node = document.createElement(tag);
+      node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    }
+
+    function showList(id, items, emptyText) {
+      byId(id).replaceChildren(...(items.length ? items : [emptyText]).map((item) => element('li', item)));
+    }
+
+    function showLine(line, selected) {
+      for (const button of byId('lines').children) {
+        button.setAttribute('aria-pressed', String(button === selected));
+      }
+      byId('line-score').textContent = `第 ${line.line_no} 句 · ${line.score.toFixed(1)} 分 · ${line.level}`;
+      byId('line-action').textContent = line.level_action;
+      showList('signals', line.signals.map((signal) => `${signalNames[signal.type]} · ${signal.evidence.join('、')}`), '本句没有命中规则');
+      showList('suggestions', line.suggestion, '本句暂无修改建议');
+    }
+
+    function showSample(sample, selected) {
+      for (const button of byId('presets').children) {
+        button.setAttribute('aria-pressed', String(button === selected));
+      }
+      const result = sample.result;
+      byId('scene-label').textContent = sample.label;
+      byId('scene-context').textContent = `${sample.context} · ${result.scene_level} · ${result.flagged_count} 句标记`;
+      byId('scene-score').textContent = result.scene_score.toFixed(1);
+      const buttons = result.per_line.map((line) => {
+        const button = element('button', '', 'script-line');
+        button.type = 'button';
+        button.append(element('span', line.line_no, 'line-number'), element('span', line.text, 'line-text'), element('span', line.score.toFixed(1), 'line-score'));
+        button.addEventListener('click', () => showLine(line, button));
+        return button;
+      });
+      byId('lines').replaceChildren(...buttons);
+      showLine(result.per_line[0], buttons[0]);
+    }
+
+    for (const sample of samples) {
+      const button = element('button', sample.label);
+      button.type = 'button';
+      button.addEventListener('click', () => showSample(sample, button));
+      byId('presets').append(button);
+    }
+    showSample(samples[1], byId('presets').children[1]);
+  </script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StageMind · 排练回看</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141618;
+      --panel: #1a1d20;
+      --ink: #eeeae2;
+      --muted: #afb5bc;
+      --line: #333940;
+      --amber: #f0b34a;
+      --blue: #83bdf5;
+      --mono: Bahnschrift, Consolas, monospace;
+      font-family: "Microsoft YaHei UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 14px;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at 60% 0%, #302822 0, transparent 45rem), var(--bg);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: default; opacity: .45; }
+    :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+    .shell { width: min(1180px, calc(100% - 48px)); margin: auto; }
+    .topbar { background: #15171af0; border-bottom: 1px solid var(--line); }
+    .topbar .shell { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 58px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 750; }
+    .mark { display: grid; place-items: center; width: 30px; height: 30px; color: var(--amber); background: #2f271c; border: 1px solid #5f4b2e; border-radius: 8px; }
+    .top-label, .legend, .eyebrow { color: var(--muted); font-size: 12px; }
+    .top-label::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--amber); vertical-align: 2px; }
+    .intro { padding: 29px 0 22px; }
+    .eyebrow { margin: 0; font-family: var(--mono); letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 3px 0 6px; font-size: clamp(28px, 5vw, 42px); line-height: 1.2; }
+    .intro p:last-child { color: var(--muted); margin: 0; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 16px; align-items: start; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 14px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+    h2 { margin: 0; font-size: 16px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
+    .dot.blue { background: var(--blue); }
+    .stage-wrap { padding: 12px 15px 0; background: #121518; }
+    .stage { display: block; width: 100%; height: auto; max-height: 365px; margin: auto; }
+    .stage text { font: 15px "Microsoft YaHei", "PingFang SC", sans-serif; }
+    .stage .axis { fill: #9ca7b4; font-size: 13px; }
+    .stage .wing-label { fill: #8aa4c2; }
+    .stage .actor text { fill: #f2eee7; paint-order: stroke; stroke: #15181b; stroke-width: 4px; }
+    .stage .actor circle { stroke: #101214; stroke-width: 3px; }
+    .detail { padding: 13px 16px; border-top: 1px solid var(--line); min-height: 87px; }
+    .detail-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+    .time { color: var(--amber); font-family: var(--mono); font-variant-numeric: tabular-nums; }
+    .detail p { margin: 3px 0 0; color: var(--muted); }
+    .controls { padding: 11px 16px 14px; border-top: 1px solid var(--line); background: #171a1d; }
+    .seek-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 13px; }
+    .seek { width: 100%; margin: 0; accent-color: var(--amber); cursor: pointer; }
+    .duration { color: var(--muted); white-space: nowrap; font-family: var(--mono); }
+    .button-row { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+    .button {
+      border: 1px solid #454b52;
+      border-radius: 7px;
+      background: #24282d;
+      padding: 6px 11px;
+      min-height: 36px;
+    }
+    .button:hover:not(:disabled) { border-color: #89949f; background: #30363e; }
+    .button.play { min-width: 66px; background: var(--amber); color: #23180c; border-color: var(--amber); font-weight: 700; }
+    .button.play:hover { background: #ffd18b; }
+    .filter-area { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 12px; }
+    .search { width: 100%; padding: 7px 9px; background: #14171a; border: 1px solid #454b52; border-radius: 7px; min-height: 36px; }
+    .search::placeholder { color: #9ba4ad; }
+    .button[aria-pressed="true"] { color: var(--amber); background: #352a1e; border-color: #806039; }
+    .notes { display: grid; gap: 7px; list-style: none; margin: 0; padding: 0 12px 12px; }
+    .note {
+      display: grid;
+      gap: 2px;
+      width: 100%;
+      padding: 9px 10px;
+      text-align: left;
+      background: #202428;
+      border: 1px solid #363d45;
+      border-radius: 8px;
+    }
+    .note:hover { border-color: #798591; }
+    .note[aria-current="true"] { border-color: #997138; background: #2b2722; }
+    .note-meta { display: flex; flex-wrap: wrap; gap: 5px 9px; align-items: center; font-size: 12px; color: var(--muted); }
+    .note-copy { color: var(--muted); font-size: 13px; }
+    .review { color: #ffd59a; padding: 0 6px; background: #453219; border-radius: 4px; }
+    .empty { margin: 2px 12px 14px; color: var(--muted); }
+    .foot { margin: 13px 0 24px; color: var(--muted); font-size: 12px; }
+    @media (max-width: 820px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
+    @media (max-width: 500px) {
+      .shell { width: calc(100% - 24px); }
+      .intro { padding: 22px 0 16px; }
+      .panel-head, .detail, .controls { padding-inline: 12px; }
+      .stage-wrap { padding-inline: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="17" height="17" fill="none"><path d="M3 12h3l2-6 3 9 2-5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        StageMind
+      </div>
+      <span class="top-label">离线演示 · 合成数据</span>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">Rehearsal Review</p>
+      <h1 id="page-title">排练回看</h1>
+      <p>虚构剧目《远岸来信》 · 第三次排练 · 第二场「站台」</p>
+    </section>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="stage-title">
+        <div class="panel-head">
+          <h2 id="stage-title">台位动线</h2>
+          <div class="legend"><span><i class="dot"></i>阿澄</span><span><i class="dot blue"></i>许舟</span></div>
+        </div>
+        <div class="stage-wrap">
+          <svg class="stage" viewBox="0 0 680 364" role="img" aria-labelledby="map-title map-description">
+            <title id="map-title">《远岸来信》排练台位图</title>
+            <desc id="map-description">俯视舞台，虚线表示两名角色的移动轨迹。拖动时间滑块可以查看不同位置。</desc>
+            <defs>
+              <linearGradient id="floor" x2="0" y2="1">
+                <stop stop-color="#30353b"/><stop offset="1" stop-color="#24292e"/>
+              </linearGradient>
+            </defs>
+            <rect x="28" y="37" width="624" height="260" rx="9" fill="#15202e" stroke="#394655"/>
+            <rect x="106" y="37" width="468" height="260" fill="url(#floor)" stroke="#627183"/>
+            <path d="M262 37v260M418 37v260M106 123h468M106 210h468" stroke="#657482" stroke-opacity=".5" stroke-dasharray="4 5"/>
+            <path d="M106 297h468" stroke="#d6a258" stroke-width="2"/>
+            <text x="340" y="23" text-anchor="middle" class="axis">后场</text>
+            <text x="67" y="171" text-anchor="middle" class="wing-label">侧台</text>
+            <text x="613" y="171" text-anchor="middle" class="wing-label">侧台</text>
+            <text x="340" y="330" text-anchor="middle" class="axis">观众席方向</text>
+            <rect x="309" y="104" width="62" height="23" rx="4" fill="#45403a" stroke="#9d8567"/>
+            <text x="340" y="121" text-anchor="middle" fill="#e0ceb7">长椅</text>
+            <polyline id="trail-0" fill="none" stroke="#f0b34a" stroke-opacity=".62" stroke-width="2" stroke-dasharray="5 5"/>
+            <polyline id="trail-1" fill="none" stroke="#83bdf5" stroke-opacity=".62" stroke-width="2" stroke-dasharray="5 5"/>
+            <g id="actor-0" class="actor"><circle r="10" fill="#f0b34a"/><text y="28" text-anchor="middle">阿澄</text></g>
+            <g id="actor-1" class="actor"><circle r="10" fill="#83bdf5"/><text y="28" text-anchor="middle">许舟</text></g>
+          </svg>
+        </div>
+        <div class="detail">
+          <div class="detail-row"><span id="moment-time" class="time"></span><strong id="moment-title"></strong></div>
+          <p id="moment-copy"></p>
+        </div>
+        <div class="controls">
+          <div class="seek-row">
+            <input id="seek" class="seek" type="range" min="0" max="54" step="0.1" value="0" aria-label="排练时间">
+            <span class="duration"><span id="clock" class="time">00:00</span> / 00:54</span>
+          </div>
+          <div class="button-row">
+            <button id="previous" class="button" type="button">上一条</button>
+            <button id="play" class="button play" type="button">播放</button>
+            <button id="next" class="button" type="button">下一条</button>
+          </div>
+        </div>
+      </section>
+      <section class="panel" aria-labelledby="notes-title">
+        <div class="panel-head"><h2 id="notes-title">排练记录</h2><span id="result-count" class="top-label" role="status"></span></div>
+        <div class="filter-area">
+          <input id="search" class="search" type="search" placeholder="搜索记录或部门" aria-label="搜索记录或部门">
+          <button id="review-only" class="button" type="button" aria-pressed="false">待复核</button>
+        </div>
+        <ol id="notes" class="notes"></ol>
+        <p id="empty" class="empty" hidden>没有匹配的记录。</p>
+      </section>
+    </div>
+    <p class="foot">记录、时间戳与台位均为合成样例。此页在浏览器内运行。项目后端的 LLM 日志结构化接口仍待接入。</p>
+    <noscript>请启用 JavaScript 以操作时间轴和排练记录。</noscript>
+  </main>
+  <script>
+    const events = [
+      { time: 0, dept: '舞监', title: '候场与开场确认', note: '两人从相对侧台候场。长椅已摆到后场中线。', positions: [[67, 212], [612, 212]] },
+      { time: 10, dept: '导演', title: '阿澄先上场', note: '从侧台走到前区，停一拍后再朝长椅看。', positions: [[231, 234], [612, 212]] },
+      { time: 22, dept: '道具', title: '信封交接位置', note: '许舟走到长椅右侧。复核长椅与交接点之间是否留出通道。', positions: [[286, 163], [399, 158]], review: true },
+      { time: 34, dept: '灯光', title: '侧光跟进时机', note: '两人转身后再切侧光。下次排练检查面部是否仍可见。', positions: [[267, 212], [422, 207]], review: true },
+      { time: 46, dept: '舞监', title: '退场动线', note: '阿澄先往侧台移动，许舟保留一个身位后再退场。', positions: [[153, 171], [498, 181]] },
+      { time: 54, dept: '舞监', title: '场景结束', note: '两人退至侧台，舞监确认通道清空。', positions: [[67, 177], [612, 177]] },
+    ];
+    const $ = id => document.getElementById(id);
+    const seek = $('seek');
+    const duration = Number(seek.max);
+    const notes = $('notes');
+    const play = $('play');
+    let currentTime = 0;
+    let currentIndex = -1;
+    let frame = null;
+    let lastTick = null;
+
+    function stamp(seconds) {
+      const whole = Math.floor(seconds);
+      const minutes = String(Math.floor(whole / 60)).padStart(2, '0');
+      return `${minutes}:${String(whole % 60).padStart(2, '0')}`;
+    }
+
+    function span(className, value) {
+      const node = document.createElement('span');
+      node.className = className;
+      node.textContent = value;
+      return node;
+    }
+
+    function markActiveNote() {
+      for (const button of notes.querySelectorAll('button')) {
+        if (Number(button.dataset.index) === currentIndex) button.setAttribute('aria-current', 'true');
+        else button.removeAttribute('aria-current');
+      }
+    }
+
+    function renderNotes() {
+      const query = $('search').value.trim().toLowerCase();
+      const reviewOnly = $('review-only').getAttribute('aria-pressed') === 'true';
+      const items = events.flatMap((event, index) => {
+        if (reviewOnly && !event.review) return [];
+        if (![event.title, event.dept, event.note].some(value => value.toLowerCase().includes(query))) return [];
+        const item = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'note';
+        button.dataset.index = index;
+        const meta = span('note-meta', '');
+        meta.append(span('time', stamp(event.time)), span('', event.dept));
+        if (event.review) meta.append(span('review', '待复核'));
+        const title = document.createElement('strong');
+        title.textContent = event.title;
+        button.append(meta, title, span('note-copy', event.note));
+        button.addEventListener('click', () => jump(event.time));
+        item.append(button);
+        return [item];
+      });
+      notes.replaceChildren(...items);
+      $('empty').hidden = items.length !== 0;
+      $('result-count').textContent = `${items.length} 条记录`;
+      markActiveNote();
+    }
+
+    function renderTime(seconds) {
+      currentTime = Math.min(duration, Math.max(0, seconds));
+      let index = events.length - 1;
+      while (events[index].time > currentTime) index--;
+      const active = events[index];
+      const following = events[index + 1] || active;
+      const progress = following === active ? 0 : (currentTime - active.time) / (following.time - active.time);
+
+      seek.value = currentTime;
+      seek.setAttribute('aria-valuetext', stamp(currentTime));
+      $('clock').textContent = stamp(currentTime);
+      for (const [actor, start] of active.positions.entries()) {
+        const position = start.map((coordinate, axis) => coordinate + progress * (following.positions[actor][axis] - coordinate));
+        $(`actor-${actor}`).setAttribute('transform', `translate(${position.join(' ')})`);
+        const points = events.slice(0, index + 1).map(event => event.positions[actor]);
+        points.push(position);
+        $(`trail-${actor}`).setAttribute('points', points.map(point => point.join(',')).join(' '));
+      }
+      if (index !== currentIndex) {
+        currentIndex = index;
+        $('moment-time').textContent = stamp(active.time);
+        $('moment-title').textContent = active.title;
+        $('moment-copy').textContent = active.note;
+        markActiveNote();
+      }
+      $('previous').disabled = currentTime === 0;
+      $('next').disabled = currentIndex === events.length - 1;
+    }
+
+    function stop() {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      lastTick = null;
+      play.textContent = '播放';
+    }
+
+    function jump(seconds) {
+      stop();
+      renderTime(seconds);
+    }
+
+    function tick(timestamp) {
+      const elapsed = lastTick === null ? 0 : (timestamp - lastTick) / 1000;
+      lastTick = timestamp;
+      renderTime(currentTime + elapsed);
+      if (currentTime >= duration) stop();
+      else frame = requestAnimationFrame(tick);
+    }
+
+    play.addEventListener('click', () => {
+      if (frame !== null) {
+        stop();
+        return;
+      }
+      if (currentTime === duration) renderTime(0);
+      play.textContent = '暂停';
+      frame = requestAnimationFrame(tick);
+    });
+    $('previous').addEventListener('click', () => {
+      const index = currentTime === events[currentIndex].time ? currentIndex - 1 : currentIndex;
+      jump(events[Math.max(0, index)].time);
+    });
+    $('next').addEventListener('click', () => jump(events[currentIndex + 1].time));
+    seek.addEventListener('input', () => jump(Number(seek.value)));
+    $('search').addEventListener('input', renderNotes);
+    $('review-only').addEventListener('click', event => {
+      const button = event.currentTarget;
+      button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+      renderNotes();
+    });
+
+    renderTime(0);
+    renderNotes();
+  </script>
+</body>
+</html>
